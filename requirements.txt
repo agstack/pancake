@@ -1,0 +1,52 @@
+# Pancake MVP - Python Dependencies
+
+# Flask & Web Framework
+Flask==3.0.0
+Flask-CORS==4.0.0
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.5
+Werkzeug==3.0.1
+
+# Database
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.23
+alembic==1.13.0
+
+# Validation & Serialization
+marshmallow==3.20.1
+jsonschema==4.20.0
+
+# HTTP Client for Asset Registry
+requests==2.31.0
+httpx==0.25.2
+
+# ULID Generation
+python-ulid==2.2.0
+
+# JWT & Auth
+PyJWT==2.8.0
+cryptography==41.0.7
+
+# Utilities
+python-dotenv==1.0.0
+click==8.1.7
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-flask==1.3.0
+schemathesis==3.27.1
+faker==20.1.0
+
+# Code Quality
+black==23.12.1
+flake8==6.1.0
+mypy==1.7.1
+pylint==3.0.3
+
+# WSGI Server
+gunicorn==21.2.0
+
+# Development
+ipython==8.18.1
+

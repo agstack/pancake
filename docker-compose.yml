@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: pancake_postgres
+    environment:
+      POSTGRES_USER: pancake_user
+      POSTGRES_PASSWORD: pancake_pass
+      POSTGRES_DB: pancake_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pancake_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Pancake Flask API
+  pancake:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pancake_api
+    environment:
+      FLASK_APP: app.py
+      FLASK_ENV: development
+      DATABASE_URL: postgresql://pancake_user:pancake_pass@postgres:5432/pancake_db
+      ASSET_REGISTRY_URL: ${ASSET_REGISTRY_URL:-http://host.docker.internal:4000}
+      USER_REGISTRY_URL: ${USER_REGISTRY_URL:-http://host.docker.internal:5000}
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "
+        flask db upgrade &&
+        python app.py
+      "
+
+volumes:
+  postgres_data:
+
