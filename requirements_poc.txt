@@ -1,0 +1,26 @@
+# POC-Nov20 Requirements
+# Install with: pip install -r requirements_poc.txt
+
+# Core dependencies
+numpy>=1.24.0
+pandas>=2.0.0
+requests>=2.31.0
+python-ulid>=1.1.0
+psycopg2-binary>=2.9.0
+openai>=1.3.0
+
+# Geospatial
+s2sphere>=0.2.5
+shapely>=2.0.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Jupyter
+jupyter>=1.0.0
+ipython>=8.0.0
+
+# Note: PostgreSQL with pgvector extension required
+# Install pgvector: https://github.com/pgvector/pgvector
+
