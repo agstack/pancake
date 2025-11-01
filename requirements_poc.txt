@@ -21,6 +21,16 @@ seaborn>=0.12.0
 jupyter>=1.0.0
 ipython>=8.0.0
 
+# Standard library imports (no pip install needed)
+# - json (built-in)
+# - random (built-in)
+# - hashlib (built-in)
+# - datetime (built-in)
+# - time (built-in)
+# - warnings (built-in)
+# - typing (built-in)
+
 # Note: PostgreSQL with pgvector extension required
 # Install pgvector: https://github.com/pgvector/pgvector
+# See POC_README.md for detailed installation instructions
 
