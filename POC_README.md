@@ -17,29 +17,56 @@ This proof-of-concept demonstrates a revolutionary approach to agricultural data
 
 ### Prerequisites
 
-1. **PostgreSQL with pgvector**
+1. **Automated Setup (Recommended)**
    ```bash
-   # Install PostgreSQL (if not already installed)
-   brew install postgresql@14  # macOS
-   # or: apt-get install postgresql  # Linux
+   # Run the automated setup script
+   ./setup_postgres.sh
+   ```
    
-   # Install pgvector extension
-   git clone https://github.com/pgvector/pgvector.git
-   cd pgvector
-   make
-   make install
-   ```
+   This script will:
+   - Check if PostgreSQL is installed and running
+   - Create `pancake_user` and databases
+   - Attempt to enable pgvector (optional)
+   - Test the connection
 
-2. **Create POC Databases**
+2. **Manual Setup (Alternative)**
+   
+   **PostgreSQL Installation:**
    ```bash
-   psql postgres
-   CREATE DATABASE pancake_poc;
-   CREATE DATABASE traditional_poc;
-   CREATE USER pancake_user WITH PASSWORD 'pancake_pass';
-   GRANT ALL PRIVILEGES ON DATABASE pancake_poc TO pancake_user;
-   GRANT ALL PRIVILEGES ON DATABASE traditional_poc TO pancake_user;
-   \q
+   # macOS
+   brew install postgresql@15
+   brew services start postgresql@15
+   
+   # Ubuntu/Debian
+   sudo apt-get install postgresql postgresql-contrib
+   sudo systemctl start postgresql
    ```
+   
+   **Create User and Databases:**
+   ```bash
+   psql postgres -c "CREATE USER pancake_user WITH PASSWORD 'pancake_pass';"
+   psql postgres -c "ALTER USER pancake_user CREATEDB;"
+   psql postgres -c "CREATE DATABASE pancake_poc OWNER pancake_user;"
+   psql postgres -c "CREATE DATABASE traditional_poc OWNER pancake_user;"
+   psql postgres -c "GRANT ALL PRIVILEGES ON DATABASE pancake_poc TO pancake_user;"
+   psql postgres -c "GRANT ALL PRIVILEGES ON DATABASE traditional_poc TO pancake_user;"
+   ```
+   
+   **pgvector Extension (Optional):**
+   ```bash
+   # macOS (may fail on older versions - that's OK!)
+   brew install pgvector
+   
+   # Ubuntu/Debian
+   sudo apt install postgresql-server-dev-15 build-essential git
+   git clone https://github.com/pgvector/pgvector.git
+   cd pgvector && make && sudo make install
+   
+   # Enable in database
+   psql -U pancake_user -d pancake_poc -c "CREATE EXTENSION IF NOT EXISTS vector;"
+   ```
+   
+   **Note**: If pgvector installation fails, the notebook will still work! It will automatically skip embedding-related features.
 
 3. **Python Environment**
    ```bash
