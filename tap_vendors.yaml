@@ -1,0 +1,97 @@
+# TAP Vendor Configuration
+# =========================
+# This file defines all registered TAP vendors and their adapters.
+# Add new vendors here to enable plug-and-play integration.
+
+vendors:
+  # Terrapipe - Satellite Imagery (NDVI)
+  - vendor_name: terrapipe_ndvi
+    adapter_class: tap_adapters.TerrapipeNDVIAdapter
+    base_url: https://appserver.terrapipe.io
+    auth_method: api_key
+    credentials:
+      secretkey: ${TERRAPIPE_SECRET}
+      client: ${TERRAPIPE_CLIENT}
+    sirup_types:
+      - satellite_imagery
+    rate_limit:
+      max_requests: 100
+      time_window: 60  # seconds
+    timeout: 60
+    metadata:
+      description: "Sentinel-2 satellite imagery with NDVI index"
+      resolution: "10m"
+      coverage: "Global"
+      update_frequency: "5-7 days"
+      data_types: ["NDVI", "vegetation health", "crop vigor"]
+  
+  # ISRIC SoilGrids - Global Soil Data
+  - vendor_name: soilgrids
+    adapter_class: tap_adapters.SoilGridsAdapter
+    base_url: https://rest.isric.org/soilgrids/v2.0
+    auth_method: none
+    credentials: {}
+    sirup_types:
+      - soil_profile
+      - soil_infiltration
+    rate_limit:
+      max_requests: 50
+      time_window: 60
+    timeout: 60
+    metadata:
+      description: "Global soil property maps at 250m resolution"
+      resolution: "250m"
+      coverage: "Global"
+      data_types: ["soil texture", "pH", "organic carbon", "bulk density", "infiltration rate"]
+      reference: "https://www.isric.org/explore/soilgrids"
+  
+  # Terrapipe - Weather Forecast (GFS)
+  - vendor_name: terrapipe_weather
+    adapter_class: tap_adapters.TerrapipeGFSAdapter
+    base_url: https://api.terrapipe.io
+    auth_method: bearer_token
+    credentials:
+      email: ${TERRAPIPE_EMAIL}
+      password: ${TERRAPIPE_PASSWORD}
+      secretkey: ${TERRAPIPE_GFS_SECRET}
+      client: ${TERRAPIPE_GFS_CLIENT}
+    sirup_types:
+      - weather_forecast
+    rate_limit:
+      max_requests: 100
+      time_window: 60
+    timeout: 60
+    metadata:
+      description: "NOAA GFS weather forecast data"
+      resolution: "0.25 degrees (~25km)"
+      coverage: "Global"
+      forecast_range: "0-16 days"
+      data_types: ["temperature", "precipitation", "humidity", "wind speed", "pressure"]
+
+
+# Vendor Integration Guidelines
+# ==============================
+# 
+# To add a new vendor:
+# 
+# 1. Create adapter class (inherit from TAPAdapter)
+#    - Implement get_vendor_data()
+#    - Implement transform_to_sirup()
+#    - Implement sirup_to_bite()
+# 
+# 2. Add vendor config here:
+#    - vendor_name: unique identifier
+#    - adapter_class: module.ClassName
+#    - base_url: API endpoint
+#    - auth_method: api_key | oauth2 | bearer_token | none
+#    - credentials: auth details (use ${ENV_VAR} for secrets)
+#    - sirup_types: list of supported SIRUP types
+#    - rate_limit: throttling config
+#    - metadata: human-readable description
+# 
+# 3. Set environment variables for credentials
+# 
+# 4. Test with: factory.get_adapter('your_vendor')
+# 
+# That's it! Your vendor is now integrated into TAP.
+

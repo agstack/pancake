@@ -972,3 +972,187 @@ TAP solves the agricultural vendor integration crisis by providing a **universal
 **Feedback**: https://github.com/agstack/tap/issues  
 **License**: CC BY 4.0 (Creative Commons Attribution)
 
+
+---
+
+## Vendor Integration System
+
+### Universal Adapter Interface
+
+TAP provides a universal adapter interface that enables plug-and-play vendor integration. Every vendor implements three simple methods:
+
+```python
+class VendorAdapter(TAPAdapter):
+    def get_vendor_data(self, geoid, params):
+        """Fetch raw data from vendor API"""
+        # Your vendor-specific API call
+        return vendor_response
+    
+    def transform_to_sirup(self, vendor_data, sirup_type):
+        """Normalize vendor data into SIRUP format"""
+        # Transform to standard structure
+        return sirup_dict
+    
+    def sirup_to_bite(self, sirup, geoid, params):
+        """Convert SIRUP into BITE"""
+        # Create standard BITE envelope
+        return bite_dict
+```
+
+**That's it!** ~100-300 lines of Python, and your vendor is integrated.
+
+### Adapter Factory
+
+The TAP Adapter Factory automatically discovers and loads vendor adapters from a simple YAML config:
+
+```yaml
+vendors:
+  - vendor_name: your_vendor
+    adapter_class: tap_adapters.YourVendorAdapter
+    base_url: https://api.yourvendor.com
+    auth_method: api_key
+    credentials:
+      api_key: ${YOUR_API_KEY}
+    sirup_types:
+      - weather_forecast
+      - soil_moisture
+```
+
+**Add a vendor** = Add a config block. No code changes needed.
+
+### Supported SIRUP Types
+
+TAP supports a standardized set of SIRUP (data payload) types:
+
+| SIRUP Type | Description | Examples |
+|------------|-------------|----------|
+| `satellite_imagery` | Remote sensing data | NDVI, EVI, thermal |
+| `weather_forecast` | Future weather | Temperature, precipitation |
+| `weather_historical` | Past weather | Climate records |
+| `soil_profile` | Soil properties by depth | Texture, pH, nutrients |
+| `soil_infiltration` | Water infiltration | Ksat, drainage rates |
+| `soil_moisture` | Current moisture | Volumetric water content |
+| `crop_health` | Crop monitoring | Disease, stress detection |
+| `pest_disease` | Pest/pathogen data | Pressure maps |
+| `market_price` | Commodity prices | Spot prices, futures |
+| `custom` | Proprietary data | Define your own |
+
+**Vendors propose new types** → AgStack TAC approves → Becomes standard
+
+### Reference Implementations
+
+TAP ships with three reference adapters:
+
+**1. Terrapipe NDVI Adapter** (`TerrapipeNDVIAdapter`)
+- SIRUP Type: `satellite_imagery`
+- Data: Sentinel-2 NDVI at 10m resolution
+- Auth: API key (secretkey + client)
+- Coverage: Global
+
+**2. SoilGrids Adapter** (`SoilGridsAdapter`)
+- SIRUP Types: `soil_profile`, `soil_infiltration`
+- Data: Global soil properties at 250m
+- Auth: Public API (no auth required)
+- Coverage: Global
+- Source: ISRIC SoilGrids
+
+**3. Terrapipe Weather Adapter** (`TerrapipeGFSAdapter`)
+- SIRUP Type: `weather_forecast`
+- Data: NOAA GFS weather forecasts
+- Auth: OAuth2 bearer token + API key
+- Coverage: Global, 0-16 day forecasts
+
+### Multi-Vendor Demo
+
+```python
+from tap_adapter_base import TAPAdapterFactory, SIRUPType
+
+# Load all vendors from config
+factory = TAPAdapterFactory('tap_vendors.yaml')
+
+# Fetch from different vendors, same interface
+ndvi_bite = factory.get_adapter('terrapipe_ndvi').fetch_and_transform(
+    geoid=my_field,
+    sirup_type=SIRUPType.SATELLITE_IMAGERY,
+    params={'date': '2025-01-15'}
+)
+
+soil_bite = factory.get_adapter('soilgrids').fetch_and_transform(
+    geoid=my_field,
+    sirup_type=SIRUPType.SOIL_PROFILE,
+    params={'lat': 36.8, 'lon': -120.4, 'analysis_type': 'profile'}
+)
+
+weather_bite = factory.get_adapter('terrapipe_weather').fetch_and_transform(
+    geoid=my_field,
+    sirup_type=SIRUPType.WEATHER_FORECAST,
+    params={'start_date': '2025-01-15', 'end_date': '2025-01-22'}
+)
+
+# All BITEs are standardized, ready for PANCAKE
+pancake.store([ndvi_bite, soil_bite, weather_bite])
+```
+
+**Result**: 3 different vendors, 1 interface, 0 vendor-specific code.
+
+### Vendor Onboarding
+
+**For vendors wanting to integrate with TAP:**
+
+1. **Read the guide**: See [TAP_VENDOR_GUIDE.md](TAP_VENDOR_GUIDE.md)
+2. **Implement adapter**: ~100-300 lines, inherit from `TAPAdapter`
+3. **Add config**: Single YAML block
+4. **Test**: Use provided test framework
+5. **Submit**: Pull request to AgStack PANCAKE repo
+6. **Deploy**: Instantly available to all PANCAKE users
+
+**Time to integrate**: 1-2 days (vs weeks/months for custom integration)
+
+**Community support**: AgStack TAC reviews and assists
+
+### Benefits for Vendors
+
+- **Market access**: Reach all AgStack members instantly
+- **Reduced support**: Standardized interface = fewer integration questions
+- **Free marketing**: Listed in TAP vendor registry
+- **Community validation**: Open-source trust and transparency
+- **Future-proof**: TAP evolves with ecosystem, your adapter stays compatible
+
+### Benefits for Users
+
+- **Vendor choice**: Easy to switch or multi-source
+- **Unified interface**: Query all vendors the same way
+- **Cost optimization**: Compare vendor pricing/quality easily
+- **Data portability**: All data in standard BITE format
+- **No lock-in**: Change vendors without changing code
+
+---
+
+## Implementation Files
+
+### Core Python Modules
+
+- **`tap_adapter_base.py`**: Base classes (`TAPAdapter`, `TAPAdapterFactory`, `SIRUPType`, `AuthMethod`)
+- **`tap_adapters.py`**: Reference adapter implementations (Terrapipe NDVI, SoilGrids, Terrapipe Weather)
+- **`tap_vendors.yaml`**: Vendor configuration registry with auth and metadata
+
+### Documentation
+
+- **[TAP.md](TAP.md)**: This document - architecture and design philosophy
+- **[TAP_VENDOR_GUIDE.md](TAP_VENDOR_GUIDE.md)**: Step-by-step vendor integration guide (onboarding)
+- **[SIRUP.md](SIRUP.md)**: SIRUP data format specification
+- **[BITE.md](BITE.md)**: BITE envelope specification
+
+### Demo and Testing
+
+- **[POC_Nov20_BITE_PANCAKE.ipynb](POC_Nov20_BITE_PANCAKE.ipynb)**: Part 12 - Multi-vendor TAP demo with live API calls
+- **`tests/test_tap_adapters.py`**: Unit and integration tests for adapters
+
+---
+
+**TAP is the universal "dock" for agricultural data.** Any vendor can plug in, any farmer can tap into it, and every BITE flows seamlessly into PANCAKE.
+
+**Implementation Status**: Working proof of concept with 3 live vendors  
+**License**: Apache 2.0  
+**Community**: AgStack open source  
+**Support**: pancake-support@agstack.org
