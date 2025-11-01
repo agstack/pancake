@@ -1,0 +1,363 @@
+# pancake_config.yaml
+# PANCAKE Configuration File
+# Version: 1.0
+
+# =============================================================================
+# AI MODEL CONFIGURATION
+# =============================================================================
+# PANCAKE supports multiple AI providers for embeddings and LLM queries.
+# Configure your provider here (OpenAI, local models, or custom endpoints).
+
+ai_models:
+  # Provider: openai | local | custom
+  provider: "openai"
+  
+  # OpenAI Configuration (if provider = "openai")
+  openai:
+    api_key: "${OPENAI_API_KEY}"  # Or set directly (not recommended for production)
+    embedding_model: "text-embedding-3-small"
+    llm_model: "gpt-4"
+    organization: ""  # Optional
+    timeout: 30  # seconds
+    max_retries: 3
+  
+  # Local Model Configuration (if provider = "local")
+  local:
+    # Embedding model (HuggingFace sentence-transformers)
+    embedding:
+      model_name: "all-MiniLM-L6-v2"
+      device: "cpu"  # or "cuda" for GPU
+      batch_size: 32
+    
+    # LLM model (local deployment)
+    llm:
+      model_name: "llama-2-7b-chat"  # Or any local model
+      api_url: "http://localhost:8000/v1"  # Local API endpoint (e.g., Ollama, vLLM)
+      context_length: 4096
+      temperature: 0.7
+  
+  # Custom Model Configuration (if provider = "custom")
+  custom:
+    embedding:
+      api_url: "https://your-embedding-api.com/embed"
+      api_key: "${CUSTOM_EMBEDDING_KEY}"
+      model_name: "custom-embed-v1"
+    
+    llm:
+      api_url: "https://your-llm-api.com/chat"
+      api_key: "${CUSTOM_LLM_KEY}"
+      model_name: "custom-llm-v1"
+
+# =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+
+database:
+  # PostgreSQL connection for BITEs
+  bites:
+    host: "localhost"
+    port: 5432
+    database: "pancake_db"
+    user: "pancake_user"
+    password: "${PANCAKE_DB_PASSWORD}"
+    pool_size: 20
+    max_overflow: 10
+  
+  # pgvector configuration
+  pgvector:
+    enabled: true
+    index_type: "ivfflat"  # or "hnsw" for larger datasets
+    index_lists: 100  # Tune based on dataset size (sqrt of n_rows)
+
+# =============================================================================
+# SIP (SENSOR INDEX POINTER) CONFIGURATION
+# =============================================================================
+
+sip:
+  # Storage backend for SIPs
+  storage:
+    type: "parquet"  # parquet | influxdb | timescaledb
+    
+    # Parquet configuration (if type = "parquet")
+    parquet:
+      root_path: "s3://farm-data/sips"  # or local: "/data/sips"
+      partition_by: ["date", "sensor_id"]
+      compression: "snappy"  # snappy | gzip | zstd
+      row_group_size: 10000
+    
+    # InfluxDB configuration (if type = "influxdb")
+    influxdb:
+      url: "http://localhost:8086"
+      token: "${INFLUXDB_TOKEN}"
+      org: "farm-org"
+      bucket: "sips"
+    
+    # TimescaleDB configuration (if type = "timescaledb")
+    timescaledb:
+      host: "localhost"
+      port: 5432
+      database: "timescale_db"
+      user: "timescale_user"
+      password: "${TIMESCALE_PASSWORD}"
+  
+  # Ingestion settings
+  ingestion:
+    buffer_size: 10000  # In-memory queue size
+    flush_interval: 10  # seconds
+    batch_size: 1000  # SIPs per batch write
+  
+  # Query settings
+  query:
+    cache_enabled: true
+    cache_size: 10000  # Number of sensors to cache
+    cache_ttl: 60  # seconds
+
+  # Metadata (sensor registry)
+  sensors:
+    table: "sensors"  # PostgreSQL table for sensor metadata
+    required_fields: ["sensor_id", "geoid", "sensor_type"]
+
+# =============================================================================
+# PANCAKE STORAGE CONFIGURATION
+# =============================================================================
+
+pancake:
+  # BITE storage settings
+  bites:
+    table: "bites"
+    indexes:
+      - "geoid"
+      - "timestamp"
+      - "type"
+      - ["geoid", "timestamp"]  # Composite index
+    
+    # Embedding generation
+    embeddings:
+      enabled: true
+      batch_size: 10  # BITEs per batch (rate limiting)
+      rate_limit: 0.5  # seconds between batches (for API quotas)
+      skip_types: ["sensor_reading"]  # Don't embed high-frequency types
+  
+  # Query engine settings
+  query:
+    # Multi-pronged similarity weights (default)
+    similarity_weights:
+      semantic: 0.33
+      spatial: 0.33
+      temporal: 0.34
+    
+    # Similarity decay parameters
+    spatial_decay_km: 10.0  # Half-life for spatial similarity
+    temporal_decay_days: 7.0  # Half-life for temporal similarity
+  
+  # Dual-agent architecture
+  agents:
+    sip_agent:
+      enabled: true
+      priority: "speed"  # Fast, indexed queries
+    
+    bite_agent:
+      enabled: true
+      priority: "accuracy"  # Semantic, contextual queries
+
+# =============================================================================
+# TAP (THIRD-PARTY AGENTIC-PIPELINE) CONFIGURATION
+# =============================================================================
+
+tap:
+  # TAP adapters directory
+  adapters_path: "/opt/pancake/tap-adapters"
+  
+  # Adapter registry
+  registry:
+    url: "https://tap-registry.agstack.org"
+    cache_ttl: 3600  # seconds
+  
+  # Scheduler settings
+  scheduler:
+    enabled: true
+    max_concurrent: 10  # Concurrent adapter runs
+    retry_attempts: 3
+    retry_backoff: 60  # seconds
+  
+  # Example adapter configuration (terrapipe)
+  adapters:
+    terrapipe:
+      enabled: true
+      credentials:
+        api_key: "${TERRAPIPE_API_KEY}"
+        client: "Dev"
+      
+      subscriptions:
+        - geoid: "63f764609b85eb356d387c1630a0671d3a8a56ffb6c91d1e52b1d7f2fe3c4213"
+          data_type: "ndvi"
+          frequency: "daily"
+          schedule: "06:00"  # UTC
+
+# =============================================================================
+# GEOID CONFIGURATION
+# =============================================================================
+
+geoid:
+  # Asset Registry for GeoID resolution
+  asset_registry:
+    url: "https://api-ar.agstack.org"
+    cache_enabled: true
+    cache_ttl: 86400  # 24 hours (GeoIDs are stable)
+  
+  # Fallback strategy if Asset Registry unavailable
+  fallback:
+    enabled: true
+    mode: "s2_cell"  # Use S2 cell token directly
+    level: 13  # S2 cell level (higher = more precise)
+
+# =============================================================================
+# STORAGE & ARCHIVAL
+# =============================================================================
+
+storage:
+  # Primary storage (hot data)
+  hot:
+    provider: "s3"  # s3 | gcs | azure | local
+    s3:
+      bucket: "farm-data-hot"
+      region: "us-east-1"
+      access_key: "${AWS_ACCESS_KEY}"
+      secret_key: "${AWS_SECRET_KEY}"
+  
+  # Archive storage (cold data)
+  cold:
+    enabled: true
+    provider: "s3_glacier"
+    age_threshold: 365  # days (archive data older than 1 year)
+    s3_glacier:
+      bucket: "farm-data-archive"
+      storage_class: "GLACIER"
+
+# =============================================================================
+# API & WEB SERVER
+# =============================================================================
+
+api:
+  host: "0.0.0.0"
+  port: 8080
+  workers: 4
+  
+  # Authentication
+  auth:
+    enabled: true
+    jwt_secret: "${JWT_SECRET}"
+    token_expiry: 3600  # seconds
+  
+  # Rate limiting
+  rate_limit:
+    enabled: true
+    requests_per_minute: 100
+    burst: 20
+  
+  # CORS
+  cors:
+    enabled: true
+    origins: ["*"]  # Restrict in production
+
+# =============================================================================
+# LOGGING & MONITORING
+# =============================================================================
+
+logging:
+  level: "INFO"  # DEBUG | INFO | WARNING | ERROR
+  format: "json"  # json | text
+  output: "stdout"  # stdout | file
+  file:
+    path: "/var/log/pancake/app.log"
+    max_size: "100MB"
+    rotation: "daily"
+
+monitoring:
+  # Prometheus metrics
+  prometheus:
+    enabled: true
+    port: 9090
+  
+  # Health check endpoint
+  health_check:
+    enabled: true
+    endpoint: "/health"
+
+# =============================================================================
+# FEATURE FLAGS
+# =============================================================================
+
+features:
+  # Multi-pronged similarity
+  multi_pronged_similarity: true
+  
+  # SIP support
+  sip_ingestion: true
+  sip_queries: true
+  
+  # Experimental features
+  blockchain_audit_trail: false
+  federation: false
+  graph_relationships: false
+
+# =============================================================================
+# PERFORMANCE TUNING
+# =============================================================================
+
+performance:
+  # Connection pooling
+  connection_pool_size: 50
+  
+  # Query caching
+  query_cache:
+    enabled: true
+    ttl: 300  # seconds
+    max_size: 1000  # cached queries
+  
+  # Batch processing
+  batch_processing:
+    enabled: true
+    batch_size: 100
+    flush_interval: 5  # seconds
+
+# =============================================================================
+# SECURITY
+# =============================================================================
+
+security:
+  # Encryption at rest
+  encryption:
+    enabled: false  # Requires KMS setup
+    kms_key_id: "${KMS_KEY_ID}"
+  
+  # TLS/SSL
+  tls:
+    enabled: false
+    cert_file: "/etc/pancake/ssl/cert.pem"
+    key_file: "/etc/pancake/ssl/key.pem"
+  
+  # Data retention
+  retention:
+    enabled: true
+    days: 2555  # 7 years (regulatory compliance)
+
+# =============================================================================
+# DEPLOYMENT
+# =============================================================================
+
+deployment:
+  mode: "production"  # development | staging | production
+  
+  # Resource limits
+  resources:
+    max_memory: "8GB"
+    max_cpu: 4
+  
+  # Scaling
+  autoscaling:
+    enabled: false
+    min_replicas: 1
+    max_replicas: 10
+    target_cpu: 70  # percent
+
