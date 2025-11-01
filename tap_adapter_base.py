@@ -36,6 +36,7 @@ class SIRUPType(Enum):
 
 class AuthMethod(Enum):
     """Supported authentication methods"""
+    NONE = "none"  # No authentication required
     API_KEY = "api_key"
     OAUTH2 = "oauth2"
     BASIC = "basic"
