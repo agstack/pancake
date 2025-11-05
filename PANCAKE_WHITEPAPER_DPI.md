@@ -103,9 +103,9 @@ Modern farming generates data from dozens of sources:
 - LLMs consume/generate JSON natively
 - **Trade-off**: 4.5x larger than Protobuf, but gzip compression closes gap
 
-### 2.2 PANCAKE: AI-Native Storage
+### 2.2 PANCAKE: AI-Native Geospatial Storage
 
-**PANCAKE** = "Google for farm data" (query with natural language, not SQL)
+**PANCAKE** = "ChatGPT for spatio-temporal farm data" (query with natural language, not SQL)
 
 **Core Principles**:
 
@@ -184,7 +184,7 @@ ORDER BY timestamp;
 - **<10ms query latency** (latest value)
 
 **Dual-Agent Architecture**:
-- **SIP**: Speed layer (dashboard queries, alerts)
+- **SIP**: IoT/Streaming layer (sensors, actuators)
 - **BITE**: Intelligence layer (semantic search, AI queries)
 
 ### 2.4 TAP: Vendor Integration Framework
@@ -856,7 +856,7 @@ sync: HTTPS to cloud PANCAKE (when online)
 ### 9.2 Strategic Recommendations
 
 **Recommendation 1: Reframe Positioning**
-- **Old**: "Google for farm data" (aspirational, intimidating)
+- **Old**: "ChatGPT for spatio-temporal farm data" (aspirational, intimidating)
 - **New**: "PostgreSQL for the AI era" (pragmatic, familiar)
 - **Rationale**: Developers understand databases, not consumer products
 
