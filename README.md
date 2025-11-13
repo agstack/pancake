@@ -1,385 +1,227 @@
-# PANCAKE: AI-Native Agricultural Data Platform
+# PANCAKE: AI-Native Geospatial Storage for Agriculture
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![AgStack](https://img.shields.io/badge/AgStack-Open%20Source-green.svg)](https://agstack.org)
-[![Status](https://img.shields.io/badge/Status-Ready%20for%20Launch-success.svg)](EXECUTIVE_SUMMARY.md)
+**An AgStack Project | Powered by The Linux Foundation**
 
-**Open-source, AI-native platform for agricultural data interoperability**
+**PANCAKE** (Persistent-Agentic-Node + Contextual Accretive Knowledge Ensemble) is an open-source, AI-native data platform designed as Digital Public Infrastructure (DPI) for agriculture.
 
----
-
-## 🎯 Quick Links
-
-**For Decision Makers**: [Executive Summary](EXECUTIVE_SUMMARY.md) | [Roadmap](ROADMAP.md)  
-**For Developers**: [POC Demo](POC_Nov20_BITE_PANCAKE.ipynb) | [Setup Guide](POC_README.md)  
-**For Architects**: [Technical Specs](#core-specifications) | [Config Reference](pancake_config.yaml)  
-**For Contributors**: [Governance](GOVERNANCE.md) | [Critical Review](CRITICAL_REVIEW_REVISED.md)
+**Vision**: "An AI-native Operating System for Agriculture"
 
 ---
 
-## 📖 What is BITE/PANCAKE?
-
-### The Problem
-
-Agricultural data is **fragmented** (100+ proprietary formats), **locked** (vendor silos), and **expensive** ($10B/year wasted on integrations).
-
-### The Solution
-
-**BITE** (Bidirectional Interchange Transport Envelope)
-- Universal JSON format for agricultural data
-- Like "email for farm data" (interoperable, portable)
-- Polyglot (observations, imagery, events, recommendations)
-- AI-ready (embeddable for semantic search)
-
-**PANCAKE** (Persistent-Agentic-Node + Contextual Accretive Knowledge Ensemble)
-- AI-native database for BITEs
-- Like "Google for farm data" (natural language queries)
-- Multi-pronged RAG (semantic + spatial + temporal)
-- Dual agents (SIP for speed, BITE for semantics)
-
-### Key Innovations
-
-**1. SIP Protocol** (Sensor Index Pointer)
-- Lightweight sensor data (60 bytes vs 500)
-- 100x faster writes (10,000/sec)
-- 8x storage savings, $0 embedding cost
-
-**2. TAP/SIRUP** (Third-party Agentic-Pipeline / Spatio-temporal Intelligence)
-- Vendor adapter framework
-- Integration time: days (vs months)
-- CLI-based (100 lines of code)
-
-**3. Open Model Config**
-- Switch AI providers (OpenAI → local → custom)
-- Cost: $0/year (local models) vs $3,000/year (OpenAI)
-
-**4. AgStack Governance**
-- Apache 2.0 (vendor-neutral, truly open)
-- RFC process (transparent, community-driven)
-- Commercial offerings allowed (keep profits)
-
----
-
-## 📚 Documentation Structure
-
-### 🚀 Getting Started
-
-| Document | Description | Audience |
-|----------|-------------|----------|
-| [**EXECUTIVE_SUMMARY.md**](EXECUTIVE_SUMMARY.md) | Complete project pitch (problem, solution, economics, vision) | Leadership, investors, sponsors |
-| [**ROADMAP.md**](ROADMAP.md) | 2-year implementation plan (4 phases, milestones, budget) | Project managers, funders |
-| [**POC_README.md**](POC_README.md) | Setup guide for demo notebook | Developers, evaluators |
-
-### 📖 Core Specifications
-
-| Document | Description | Audience |
-|----------|-------------|----------|
-| [**BITE.md**](BITE.md) | Bidirectional Interchange Transport Envelope (data format) | Architects, integrators |
-| [**PANCAKE.md**](PANCAKE.md) | AI-native storage system (PAN + CAKE architecture) | Backend engineers |
-| [**TAP.md**](TAP.md) | Third-party Agentic-Pipeline (vendor adapters) | Integration engineers |
-| [**SIRUP.md**](SIRUP.md) | Spatio-temporal Intelligence (enriched data payload) | Data scientists |
-| [**SIP.md**](SIP.md) | Sensor Index Pointer (lightweight time-series protocol) | IoT engineers |
-
-### ⚙️ Configuration & Deployment
-
-| Document | Description | Audience |
-|----------|-------------|----------|
-| [**pancake_config.yaml**](pancake_config.yaml) | Production configuration (AI models, storage, performance) | DevOps, SysAdmins |
-| [**GOVERNANCE.md**](GOVERNANCE.md) | AgStack open-source governance (RFC, TSC, membership) | Contributors, sponsors |
-
-### 🔬 Evaluation & Analysis
-
-| Document | Description | Audience |
-|----------|-------------|----------|
-| [**POC_Nov20_BITE_PANCAKE.ipynb**](POC_Nov20_BITE_PANCAKE.ipynb) | Working demo (real data, benchmarks, RAG queries) | Technical evaluators |
-| [**CRITICAL_REVIEW_REVISED.md**](CRITICAL_REVIEW_REVISED.md) | Senior engineer review (risks, mitigations, verdict) | Decision makers |
-| [**WHITEPAPER_OUTLINE.md**](WHITEPAPER_OUTLINE.md) | Academic publication template (10 pages) | Researchers |
-| [**DELIVERY_SUMMARY.md**](DELIVERY_SUMMARY.md) | POC deliverables summary | Stakeholders |
-
-### 📂 Legacy (Phase 0)
-
-| Directory | Description | Status |
-|-----------|-------------|--------|
-| [**later/**](later/) | Original Flask MVP implementation | Archived (replaced by POC) |
-
----
-
-## 🎬 Quick Start (5 Minutes)
-
-### Prerequisites
+## Quick Start
 
 ```bash
-# Python 3.11+, PostgreSQL 15+
-python --version  # ≥3.11
-psql --version    # ≥15
-```
-
-### Setup
-
-```bash
-# Clone repo
-git clone https://github.com/sumerjohal/pancake.git
+# Clone repository
+git clone https://github.com/agstack/pancake.git
 cd pancake
 
+# Set up PostgreSQL with pgvector
+./implementation/setup_postgres.sh
+
 # Install dependencies
-pip install -r requirements_poc.txt
+pip install -r implementation/requirements_poc.txt
 
-# Setup PostgreSQL
-createdb pancake_db
-createdb traditional_db
-
-# Set environment variables
-export OPENAI_API_KEY="sk-..."  # Or use local models (see config)
-export TERRAPIPE_SECRET="..."
-export TERRAPIPE_CLIENT="Dev"
-
-# Run demo notebook
-jupyter notebook POC_Nov20_BITE_PANCAKE.ipynb
+# Run POC notebook
+jupyter notebook implementation/POC_Nov20_BITE_PANCAKE.ipynb
 ```
 
-**Expected output**: Working BITE/PANCAKE system with real NDVI data, multi-pronged RAG, and conversational AI.
+**See**: `implementation/POC_README.md` for detailed setup instructions
 
 ---
 
-## 🌟 Key Features
+## What is PANCAKE?
 
-### ✅ Production-Ready
+PANCAKE is **"ChatGPT for spatio-temporal farm data"** - query your agricultural data with natural language, not SQL.
 
-- **Configurable AI models** (OpenAI, local, custom)
-- **Dual-agent architecture** (SIP for speed, BITE for semantics)
-- **Performance benchmarks** (vs traditional databases)
-- **Real vendor integration** (terrapipe.io NDVI)
-- **Open-source governance** (AgStack, Apache 2.0)
+### Core Components
 
-### ✅ Economically Viable
+- **BITE** (Bidirectional Interchange Transport Envelope): Universal JSON format for agricultural data
+- **SIP** (Sensor Index Pointer): IoT/Streaming layer for sensors and actuators
+- **MEAL** (Multi-User Engagement Asynchronous Ledger): Collaboration persistence layer
+- **TAP** (Third-party Agentic-Pipeline): Vendor integration framework
+- **PANCAKE Core**: AI-native geospatial storage with multi-pronged RAG
 
-| Farm Size | Traditional | BITE/PANCAKE | Savings |
-|-----------|-------------|--------------|---------|
-| Small (10 sensors) | $62.5K (5yr) | **$0** | 100% |
-| Medium (100 sensors) | $230K (5yr) | **$3K** | 99% |
+### Key Features
 
-### ✅ Technically Sound
-
-| Metric | Value | Context |
-|--------|-------|---------|
-| **Write throughput** | 10,000/sec | SIP (time-series) |
-| **Query latency** | <10ms | SIP (latest value) |
-| **Storage efficiency** | 8x | SIP vs BITE |
-| **Semantic queries** | 50-100ms | BITE (multi-pronged RAG) |
-
-### ✅ Adoption Path
-
-**Phase 1 (Q1 2025)**: 10 farms, 3 vendors, benchmarks  
-**Phase 2 (Q2 2025)**: 99.9% uptime, SOC 2  
-**Phase 3 (Q4 2025)**: 100 farms, 10 vendors  
-**Phase 4 (2026)**: 1,000 farms, ISO submission
+- ✅ **Natural Language Queries**: "What pests affected Field A last week?"
+- ✅ **Multi-Pronged RAG**: Semantic + Spatial + Temporal similarity search
+- ✅ **Polyglot Data**: One table stores all data types (observations, imagery, operations, etc.)
+- ✅ **Spatio-Temporal Indexing**: Automatic spatial relationships via GeoID
+- ✅ **Immutable Audit Trails**: Cryptographic hash chains for compliance
+- ✅ **Vendor-Agnostic**: TAP adapters for any agricultural data source
 
 ---
 
-## 🤝 Contributing
+## Documentation Structure
 
-### For Developers
+### Core Documentation (`/docs`)
+- `BITE.md` - Universal data format specification
+- `PANCAKE.md` - Core storage and AI architecture
+- `SIP.md` - Sensor/actuator streaming protocol
+- `MEAL.md` - Collaboration and audit ledger
+- `TAP.md` - Vendor integration framework
+- `SIRUP.md` - Enriched data payload concept
 
-**Build a TAP adapter** (vendor integration):
-```bash
-# Install CLI
-pip install tap-cli
+### Sprint Plans (`/sprints`)
+- `SPRINT_1_USER_AUTHENTICATION_UPGRADE.md` - OECD-compliant authentication (Weeks 1-12)
+- `SPRINT_2_ENTERPRISE_MIGRATION.md` - Enterprise FMIS migration (Weeks 13-24)
+- `SPRINT_3_PAYMENTS.md` - Digital payments integration (Weeks 25-36)
+- `SPRINT_4_DATA_WALLETS.md` - Data wallets & chain of custody (Weeks 37-48)
 
-# Create adapter
-tap-cli new-adapter --vendor your-vendor
+### Testing Profiles (`/testing`)
+- `testing_EUDR.md` - EUDR compliance testing scenarios
+- `testing_food_safety.md` - Food safety traceability testing scenarios
 
-# Test adapter
-tap-cli test --adapter your-vendor --geoid <test-geoid>
+### Strategic Documents (`/strategic`)
+- `PANCAKE_WHITEPAPER_DPI.md` - Business white paper
+- `EU_HORIZON_GRANTS_STRATEGY.md` - EU grant strategy
+- `EU_HORIZON_GRANTS_PROPOSAL.md` - EU grant proposal
+- `OECD_AUTHENTICATION_ALIGNMENT.md` - OECD compliance analysis
+- `openagri_integration.md` - OpenAgri integration guide
 
-# Submit to registry
-tap-cli publish --adapter your-vendor
-```
+### Implementation (`/implementation`)
+- `POC_Nov20_BITE_PANCAKE.ipynb` - Proof of Concept notebook
+- `POC_README.md` - POC setup instructions
+- `requirements_poc.txt` - Python dependencies
+- `setup_postgres.sh` - PostgreSQL setup script
+- `meal.py` - MEAL implementation
+- `tap_adapter_base.py` - TAP adapter base class
+- `tap_adapters.py` - TAP adapter implementations
+- `migrations/` - Database migration scripts
 
-**Bounty**: $5,000 per adapter (AgStack funded)
+### Podcast Series (`/podcast`)
+- Complete podcast series for NotebookLM
+- 11 modules covering all aspects of PANCAKE
 
-### For Researchers
-
-**Contribute to benchmarks**:
-- Dataset creation (agricultural queries)
-- Multi-pronged RAG evaluation
-- Spatial similarity algorithms
-
-**Publication**: Co-author ArXiv paper
-
-### For Organizations
-
-**AgStack Membership**:
-- **Member** ($10K/year): Voting rights, priority support
-- **Sponsor** ($50K/year): TAC seat, roadmap influence
-- **Platinum** ($100K+/year): Dedicated liaison
-
-**Benefits**: Shape standards, early adopter advantage, marketing
-
----
-
-## 📊 Project Status
-
-### Current State
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| **BITE Spec** | ✅ Complete | v1.0, ready for RFC |
-| **PANCAKE Impl** | ✅ POC | Production hardening in Phase 2 |
-| **TAP Framework** | ✅ POC | 1 adapter (terrapipe), need 2+ |
-| **SIP Protocol** | ✅ Spec | Implementation in Phase 1 |
-| **Governance** | ✅ Defined | Awaiting AgStack TAC approval |
-
-### Next Milestones
-
-- [ ] **Dec 15, 2024**: AgStack TAC approval
-- [ ] **Jan 1, 2025**: Public launch (blog, press release)
-- [ ] **Mar 31, 2025**: Phase 1 complete (10 farms, 3 adapters, benchmarks)
-- [ ] **Jun 30, 2025**: Phase 2 complete (99.9% uptime, SOC 2)
-
-### Risk Assessment
-
-| Risk | Level | Mitigation |
-|------|-------|------------|
-| Standards fragmentation | ✅ Low | AgStack governance |
-| Vendor resistance | ✅ Medium | Apache 2.0, commercialization allowed |
-| Embedding costs | ✅ Low | Local models ($0/year) |
-| Time-series overhead | ✅ Low | SIP protocol |
-| Multi-pronged unproven | ⚠️ Medium | Benchmarks in Phase 1 |
-| Market timing | ⚠️ Medium | 10-year horizon, 1% target |
-
-**Overall**: 8.5/10 (launch-ready)
+### Archive (`/archive`)
+- Historical documentation and completed phase summaries
 
 ---
 
-## 🎯 Use Cases
+## Roadmap
 
-### 1. Field Scout (Observation → AI Query)
+**See**: `ROADMAP.md` for complete 12-month sprint-based development plan
 
-**Scenario**: Scout records pest sighting on phone
+**Current Status**: Sprint 1 (User Authentication) - Planning
 
+**Timeline**:
+- **Sprint 1**: Weeks 1-12 (User Authentication)
+- **Sprint 2**: Weeks 13-24 (Enterprise Migration)
+- **Sprint 3**: Weeks 25-36 (Payments)
+- **Sprint 4**: Weeks 37-48 (Data Wallets)
+
+---
+
+## Key Use Cases
+
+### 1. Natural Language Queries
 ```python
-# Scout creates BITE
-bite = BITE.create(
-    bite_type="observation",
-    geoid="field-abc",
-    body={
-        "observation": "Coffee rust on lower leaves, 30% coverage",
-        "severity": "moderate",
-        "photos": ["s3://..."]
-    }
+# Query PANCAKE with natural language
+answer = pancake.ask(
+    "What pests or diseases have been observed in the coffee fields in the last week?",
+    geoid="field-coffee-123"
 )
-
-# Store in PANCAKE
-pancake.ingest(bite)
-
-# Farmer asks AI (days later)
-answer = pancake.ask("Why are my coffee leaves yellowing?")
-# AI retrieves BITE (multi-pronged RAG), synthesizes answer
 ```
 
-### 2. Sensor Network (SIP → Dashboard)
-
-**Scenario**: 100 soil moisture sensors, read every 30 seconds
-
+### 2. Multi-Vendor Data Integration
 ```python
-# Sensors send SIPs (fire-and-forget)
-for sensor in sensors:
-    sip = {
-        "sensor_id": sensor.id,
-        "time": now(),
-        "value": sensor.read()
-    }
-    pancake.sip_ingest(sip)  # Async, <1ms
-
-# Dashboard queries latest
-latest = pancake.sip_query({"sensor_id": "A1-3", "op": "GET_LATEST"})
-# Returns in <10ms
+# Fetch data from multiple vendors via TAP
+ndvi_data = tap_factory.fetch('terrapipe_ndvi', geoid='field-abc')
+soil_data = tap_factory.fetch('soilgrids', geoid='field-abc')
+weather_data = tap_factory.fetch('terrapipe_weather', geoid='field-abc')
 ```
 
-### 3. Vendor Integration (TAP → SIRUP → BITE)
-
-**Scenario**: Subscribe to satellite imagery (Planet)
-
-```bash
-# Install Planet adapter
-tap-cli install planet
-
-# Subscribe to GeoID
-tap-cli subscribe --vendor planet --geoid field-abc --frequency weekly
-
-# TAP runs automatically (cron)
-# - Fetches NDVI from Planet API
-# - Transforms to SIRUP (enriched payload)
-# - Creates BITE (summary with embeddings)
-# - Stores in PANCAKE
+### 3. Enterprise FMIS Migration
+```python
+# Migrate FMIS data to PANCAKE
+migration_tool = MigrationTool(pancake_client, adapter)
+result = migration_tool.migrate_csv('fieldview_export.csv')
 ```
 
-**Result**: Weekly satellite BITEs appear automatically, queryable via AI.
+### 4. EUDR Compliance
+```python
+# Generate EUDR compliance report
+eudr_report = eudr_compliance.generate_eudr_report(shipment_geoid='shipment-123')
+```
 
 ---
 
-## 📞 Contact & Resources
+## Architecture
 
-**GitHub**: https://github.com/sumerjohal/pancake (this repo)  
-**Documentation**: https://docs.agstack.org/pancake (future)  
-**Forum**: https://forum.agstack.org/c/pancake (future)  
-**Email**: pancake@agstack.org  
-**Slack**: agstack.slack.com #pancake (future)
-
-**Maintainers**: TBD (elect TSC after charter approval)  
-**AgStack TAC Liaison**: TBD
-
----
-
-## 📜 License & Governance
-
-**License**: [Apache 2.0](https://opensource.org/licenses/Apache-2.0)  
-- ✅ Commercial use allowed
-- ✅ Modification allowed
-- ✅ Distribution allowed
-- ✅ Private use allowed
-- ⚠️ Attribution required
-
-**Governance**: AgStack Foundation (see [GOVERNANCE.md](GOVERNANCE.md))  
-- RFC-based decision making
-- Technical Steering Committee (7 elected members)
-- Vendor-neutral (no single company owns project)
-- Community-driven (meritocracy)
+```
+┌─────────────────────────────────────────────────────────┐
+│              PANCAKE Application Layer                  │
+│  (Natural Language Queries, Voice API, Mobile/Desktop) │
+└────────────────────┬────────────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────────────┐
+│              PANCAKE Core (Storage + AI)                │
+│  • BITE Storage (PostgreSQL + pgvector)                │
+│  • SIP Storage (Time-series optimized)                 │
+│  • MEAL Storage (Immutable ledger)                      │
+│  • Multi-Pronged RAG (Semantic + Spatial + Temporal)    │
+└────────────────────┬────────────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────────────┐
+│              TAP (Vendor Integration)                   │
+│  • Terrapipe (NDVI, Weather)                            │
+│  • SoilGrids (Soil data)                               │
+│  • Custom TAP Adapters                                  │
+└─────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 🙏 Acknowledgments
+## Technology Stack
 
-**Built with**:
-- [PostgreSQL](https://www.postgresql.org/) + [pgvector](https://github.com/pgvector/pgvector) (storage)
-- [OpenAI API](https://openai.com/) (embeddings, LLM)
-- [S2 Geometry](https://s2geometry.io/) (geospatial indexing)
-- [Apache Parquet](https://parquet.apache.org/) (SIP storage)
-
-**Inspired by**:
-- ADAPT (ag data standard)
-- SensorThings API (IoT standard)
-- GeoJSON (geospatial interoperability)
-- Email/HTTP (universal protocols)
-
-**Supported by**:
-- [AgStack Foundation](https://agstack.org/) (governance)
-- [Terrapipe.io](https://terrapipe.io/) (NDVI data)
+- **Database**: PostgreSQL 14+ with pgvector extension
+- **AI/ML**: OpenAI GPT-4 (embeddings and queries), local models supported
+- **Blockchain**: Hyperledger Fabric (payments), Hyperledger Indy/Aries (identity)
+- **Languages**: Python 3.9+
+- **License**: Apache 2.0 (Code) | CC BY 4.0 (Documentation)
 
 ---
 
-## 🌱 Vision
+## Contributing
 
-**"Make agricultural data as interoperable as email, as queryable as Google, and as open as Linux."**
+PANCAKE is an AgStack project under The Linux Foundation. We welcome contributions!
 
-**2025**: 10 farms, 3 vendors (pilot)  
-**2026**: 1,000 farms, 10 vendors, ISO submission  
-**2030**: 100,000 farms, 1,000 vendors, **global standard**
+**Getting Started**:
+1. Review `ROADMAP.md` for current development priorities
+2. Check `GOVERNANCE.md` for contribution guidelines
+3. Join AgStack community: https://agstack.org
 
-**The future of agricultural data is open, AI-native, and farmer-controlled.** 🌾
+**Areas for Contribution**:
+- TAP adapter development
+- Core PANCAKE improvements
+- Documentation
+- Testing
+- Use case implementations
 
 ---
 
-**Last Updated**: November 2024  
-**Version**: 1.0  
-**Status**: ✅ Ready for AgStack Launch
+## License
+
+- **Code**: Apache 2.0
+- **Documentation**: CC BY 4.0
+
+---
+
+## Contact & Resources
+
+- **GitHub**: https://github.com/agstack/pancake
+- **Documentation**: See `/docs/` directory
+- **AgStack**: https://agstack.org
+- **Email**: pancake@agstack.org
+
+---
+
+## Status
+
+**Current Version**: POC (Proof of Concept)  
+**Next Milestone**: Sprint 1 completion (Week 12)  
+**Production Target**: After Sprint 4 (Week 48)
+
+---
+
+**An AgStack Project | Powered by The Linux Foundation**

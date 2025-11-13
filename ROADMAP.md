@@ -1,508 +1,415 @@
-# IMPLEMENTATION ROADMAP
+# PANCAKE Implementation Roadmap
+## Complete Sprint-Based Development Plan
 
-**Project**: BITE/PANCAKE/TAP/SIRUP/SIP Ecosystem  
-**Status**: Strategic Foundation Complete  
-**Date**: November 2024  
-**Next Steps**: Pilot Execution
+**An AgStack Project | Powered by The Linux Foundation**
 
----
-
-## 🎯 Current Status: READY FOR AGSTACK LAUNCH
-
-### What's Complete ✅
-
-**1. Core Specifications**
-- ✅ BITE (Bidirectional Interchange Transport Envelope)
-- ✅ PANCAKE (Persistent-Agentic-Node + Contextual Accretive Knowledge Ensemble)
-- ✅ TAP (Third-party Agentic-Pipeline)
-- ✅ SIRUP (Spatio-temporal Intelligence for Reasoning and Unified Perception)
-- ✅ SIP (Sensor Index Pointer)
-
-**2. Working POC** (`POC_Nov20_BITE_PANCAKE.ipynb`)
-- ✅ BITE creation and validation
-- ✅ TAP integration (terrapipe.io NDVI real data)
-- ✅ Synthetic agricultural data (coffee rust, soil, recommendations)
-- ✅ PostgreSQL + pgvector PANCAKE storage
-- ✅ Traditional DB comparison (performance benchmarks)
-- ✅ Multi-pronged similarity (semantic + spatial + temporal)
-- ✅ RAG queries with OpenAI
-- ✅ Conversational AI (GPT-4 integration)
-
-**3. Strategic Documentation**
-- ✅ SIP.md (lightweight sensor protocol, solves time-series bottleneck)
-- ✅ pancake_config.yaml (production-ready configuration, model switching)
-- ✅ GOVERNANCE.md (AgStack open-source model, RFC process)
-- ✅ CRITICAL_REVIEW_REVISED.md (8.5/10 score, launch-ready assessment)
-
-**4. Earlier Documentation**
-- ✅ BITE.md (detailed conceptual design)
-- ✅ PANCAKE.md (PAN/CAKE architecture)
-- ✅ TAP.md (vendor adapter framework)
-- ✅ SIRUP.md (enriched data payload concept)
-- ✅ POC_README.md (setup instructions)
-- ✅ WHITEPAPER_OUTLINE.md (publication template)
-- ✅ DELIVERY_SUMMARY.md (POC summary)
+**Version**: 2.0  
+**Last Updated**: November 2025  
+**Status**: Active Development
 
 ---
 
-## 📊 Key Metrics (Before → After Revisions)
+## Executive Summary
 
-### Economic Viability
+This roadmap integrates four major development sprints into a cohesive 48-week (12-month) implementation plan, building PANCAKE from core infrastructure to a complete agricultural data platform with payments, data wallets, and enterprise integration.
 
-| Farm Size | Before | After | Savings |
-|-----------|--------|-------|---------|
-| **Small** (10 sensors) | $2,500/year | **$0/year** | 100% |
-| **Medium** (100 sensors) | $6,000/year | **$600/year** | 90% |
-| **Large** (1000 sensors) | $30,000/year | **$3,000/year** | 90% |
-
-**Key**: Local models ($0/year) + SIP efficiency (no embeddings for sensors)
-
-### Performance
-
-| Metric | BITE Only | BITE + SIP | Improvement |
-|--------|-----------|------------|-------------|
-| **Write throughput** | 100/sec | **10,000/sec** | 100x |
-| **Query latency** (latest sensor) | 50-100ms | **<10ms** | 10x |
-| **Storage efficiency** | 500 bytes/reading | **60 bytes/reading** | 8x |
-
-### Risk Assessment
-
-| Risk | Before | After | Status |
-|------|--------|-------|--------|
-| Standards fragmentation | ⚠️ High | ✅ Low | AgStack governance |
-| Vendor resistance | ⚠️ High | ✅ Medium | Apache 2.0 + commercialization |
-| Embedding costs | ⚠️ High | ✅ Low | Local models |
-| Time-series overhead | ⚠️ High | ✅ Low | SIP protocol |
-| GeoID dependency | ⚠️ High | ⚠️ Medium | Fallback added |
-| Multi-pronged unproven | ⚠️ Medium | ⚠️ Medium | Needs benchmarks |
-| Overengineering | ⚠️ Medium | ⚠️ Medium | Market ahead of curve |
-
-**Overall**: 6/10 → **8.5/10** (launch-ready)
+**Timeline**: 4 Sprints × 12 weeks each = 48 weeks (12 months)
 
 ---
 
-## 🚀 Phase 1: Pilot Execution (Q1 2025)
+## Sprint Overview
 
-### Goal: Prove Market Fit
+| Sprint | Focus | Duration | Status | Priority |
+|--------|-------|----------|--------|----------|
+| **Sprint 1** | User Authentication (OECD-compliant) | Weeks 1-12 | Planning | High |
+| **Sprint 2** | Enterprise FMIS Migration | Weeks 13-24 | Planning | High |
+| **Sprint 3** | Digital Payments Integration | Weeks 25-36 | Planning | High |
+| **Sprint 4** | Data Wallets & Chain of Custody | Weeks 37-48 | Planning | High |
 
-**Objective**: Deploy on 10 farms, 3 vendors, publish benchmarks
-
-### 1.1 Farm Pilots (Priority: CRITICAL)
-
-**Target**: 10 farms (diverse)
-- 3 small (<50 acres, organic, direct-to-consumer)
-- 4 medium (50-500 acres, row crops, co-op member)
-- 3 large (500+ acres, precision ag, tech-forward)
-
-**Deployment**:
-```yaml
-# Small farms: Local model, self-host
-ai_models:
-  provider: "local"
-  local:
-    embedding: "all-MiniLM-L6-v2"
-
-# Medium/large: OpenAI, self-host or cloud
-ai_models:
-  provider: "openai"
-```
-
-**Data Collection**:
-- Economics: Total cost (setup + monthly)
-- Performance: Query latency, uptime
-- Usability: "Would you recommend?" (NPS score)
-
-**Success Criteria**:
-- <$100/month all-in (self-hosted)
-- >90% uptime
-- NPS >40 (promoters > detractors)
-
-### 1.2 Vendor Adapters (Priority: CRITICAL)
-
-**Target**: 3+ TAP adapters (proof of ecosystem)
-
-**Vendors**:
-1. ✅ **Terrapipe** (done) - Satellite NDVI
-2. 🔄 **Planet** - Satellite imagery
-3. 🔄 **DTN** - Weather data
-4. 🔄 **CropX** - Soil sensors
-
-**Process**:
-```bash
-# Vendor installs tap-cli
-pip install tap-cli
-
-# Vendor writes adapter
-tap-cli new-adapter --vendor cropx --type sensors
-
-# Vendor deploys adapter
-tap-cli deploy --adapter cropx --config config.yaml
-
-# Vendor tests
-tap-cli test --adapter cropx --geoid <test-geoid>
-```
-
-**Success Criteria**:
-- Adapter development <5 days (vendor time)
-- <100 lines of code (simple API wrapper)
-- 3+ adapters live by Q1 2025
-
-### 1.3 Benchmarks (Priority: HIGH)
-
-**Objective**: Prove multi-pronged RAG > baselines
-
-**Dataset**: Agricultural Query Benchmark
-- 1000 queries (real farmer questions)
-- Human-judged relevance (3 annotators)
-- Gold standard answers
-
-**Baselines**:
-1. Keyword search (Elasticsearch)
-2. Semantic-only (pgvector, cosine similarity)
-3. **Multi-pronged** (semantic + spatial + temporal)
-
-**Metrics**:
-- NDCG@10 (ranking quality)
-- Precision@5 (top results correct)
-- User satisfaction (A/B test)
-
-**Success Criteria**:
-- Multi-pronged NDCG@10 >2x keyword search
-- Multi-pronged >10% better than semantic-only
-
-**Publication**: ArXiv + AgStack blog
+**Parallel Work**: Core PANCAKE development (BITE, SIP, MEAL, TAP) continues throughout all sprints.
 
 ---
 
-## 🏗️ Phase 2: Production Hardening (Q2 2025)
+## Sprint 1: User Authentication Upgrade (Weeks 1-12)
 
-### Goal: Enterprise-Ready
+**Goal**: OECD-compliant authentication service enabling high-stakes operations (EUDR, financial transactions)
 
-### 2.1 Scalability
+### Phase 1: Foundation (Weeks 1-4)
+- Identity proofing with assurance levels (LOW, MEDIUM, HIGH)
+- Multi-factor authentication (MFA) - TOTP, SMS, Email
+- OAuth2/OpenID Connect integration
 
-**Current**: POC (single-node, 1000s of BITEs)  
-**Target**: Production (multi-node, 10M+ BITEs)
+**Deliverables**:
+- Enhanced User Registry with identity proofing
+- MFA support (TOTP implemented, SMS/Email stubs)
+- OAuth2/OpenID Connect server
+- API documentation
 
-**Tasks**:
-- Load testing (JMeter, Locust)
-- Database tuning (pgvector HNSW, partitioning)
-- Caching (Redis, edge caching for GeoIDs)
-- Monitoring (Prometheus, Grafana)
+### Phase 2: Risk-Based & Audit (Weeks 5-8)
+- Risk-based authentication (LOW/MEDIUM/HIGH assurance levels)
+- Comprehensive audit trails
+- PANCAKE integration (user context in BITEs)
 
-**Success Criteria**:
-- 1000 req/sec (API)
-- <100ms p99 latency (queries)
-- 10M BITEs indexed (without performance degradation)
+**Deliverables**:
+- Risk-based authentication system
+- Audit trail system
+- PANCAKE user context integration
 
-### 2.2 Security
+### Phase 3: Advanced Features (Weeks 9-12)
+- Machine identity (AI agents)
+- Cross-border federation
+- Complete documentation and security audit
 
-**Tasks**:
-- JWT authentication (secure)
-- RBAC (role-based access control)
-- Encryption at rest (KMS)
-- TLS/SSL (HTTPS only)
-- Security audit (third-party)
+**Deliverables**:
+- Machine identity support
+- Federation framework
+- Security audit report
+- Complete documentation
 
-**Success Criteria**:
-- OWASP Top 10 mitigated
-- SOC 2 Type 1 audit passed
+**Success Metrics**:
+- Identity proofing: 100% of users have assurance level
+- MFA adoption: >50% of users enable MFA
+- OAuth2 clients: 10+ registered clients
+- Security audit: No critical vulnerabilities
 
-### 2.3 High Availability
+**Dependencies**: None (foundational)
 
-**Tasks**:
-- Multi-region deployment (AWS, GCP, Azure)
-- Database replication (PostgreSQL streaming replication)
-- Failover testing (chaos engineering)
-- Backup/restore (daily backups, tested recovery)
-
-**Success Criteria**:
-- 99.9% uptime (3-nines)
-- <5 min RTO (recovery time objective)
-- <1 hour RPO (recovery point objective)
-
----
-
-## 🌍 Phase 3: Ecosystem Growth (Q3-Q4 2025)
-
-### Goal: Critical Mass
-
-### 3.1 Vendor Adoption
-
-**Target**: 10+ TAP adapters
-
-**Outreach**:
-- Present at conferences (AgTech Summit, World Ag Expo)
-- Vendor onboarding program (free consulting, co-marketing)
-- TAP adapter bounty ($5K per adapter, funded by AgStack)
-
-**Success Criteria**:
-- 10+ adapters live
-- 3+ vendors offering "Hosted PANCAKE" (SaaS)
-
-### 3.2 Farm Adoption
-
-**Target**: 100+ farms
-
-**Channels**:
-- Co-op partnerships (Organic Valley, CHS, Land O'Lakes)
-- Extension offices (state universities)
-- NGOs (TechnoServe, One Acre Fund)
-
-**Success Criteria**:
-- 100+ active deployments
-- 10+ countries
-- 50/50 split (self-hosted vs SaaS)
-
-### 3.3 Developer Community
-
-**Target**: 50+ contributors
-
-**Initiatives**:
-- Open-source all repos (github.com/agstack)
-- Developer documentation (tutorials, API reference)
-- Hackathons (AgStack Hack Week)
-- Bug bounty program
-
-**Success Criteria**:
-- 50+ GitHub contributors
-- 100+ GitHub stars
-- 10+ forks (organizations building on PANCAKE)
+**See**: `/sprints/SPRINT_1_USER_AUTHENTICATION_UPGRADE.md`
 
 ---
 
-## 📈 Phase 4: Standards Adoption (2026)
+## Sprint 2: Enterprise FMIS Migration (Weeks 13-24)
 
-### Goal: Industry Standard
+**Goal**: Enable enterprises to migrate data from proprietary FMIS systems (Climate FieldView, Granular) into PANCAKE
 
-### 4.1 Standards Body Recognition
+### Phase 1: Data Migration Foundation (Weeks 13-16)
+- FMIS data model analysis (Climate FieldView, Granular)
+- AI-assisted connector builder (CSV/JSON → TAP adapter)
+- Batch migration tool (CSV/JSON → BITE conversion)
 
-**Targets**:
-- ISO (International Organization for Standardization)
-- OGC (Open Geospatial Consortium)
-- OASIS (agriculture data standards)
+**Deliverables**:
+- FMIS data model documentation
+- AI-assisted connector builder tool
+- Batch migration tool
+- Sample TAP adapters
 
-**Process**:
-- Submit BITE/SIP to standards bodies
-- Participate in working groups
-- Align with existing standards (ADAPT, SensorThings)
+### Phase 2: PANCAKE Inside Architecture (Weeks 17-20)
+- "PANCAKE Inside" architecture design
+- Bidirectional sync (FMIS ↔ PANCAKE)
+- OpenAgri modular integration
+- Performance optimization
 
-**Success Criteria**:
-- BITE/SIP published as ISO draft
-- OGC adoption (reference in geospatial standards)
+**Deliverables**:
+- "PANCAKE Inside" architecture
+- Bidirectional sync system
+- OpenAgri module integration
+- Performance benchmarks
 
-### 4.2 Regulatory Recognition
+### Phase 3: Agentic Workflows & Voice API (Weeks 21-24)
+- Agentic workflows module
+- Voice API (primary UX)
+- Mobile and desktop interfaces
 
-**Targets**:
-- EU Data Act (compliance pathway)
-- USDA data interoperability requirements
-- Emerging "Right to Repair" laws (tractor data)
+**Deliverables**:
+- Agentic workflow engine
+- Voice API service
+- Mobile/desktop interfaces
+- Complete documentation
 
-**Success Criteria**:
-- AgStack listed as compliant framework
-- Government grants (USDA SBIR, EU Horizon)
+**Success Metrics**:
+- Migration success rate: >99% (data completeness)
+- Query performance: <100ms (p95)
+- Write performance: <1s per 1000 records (p95)
+- Enterprise migrations: 5+ enterprises migrated
 
-### 4.3 Enterprise Adoption
+**Dependencies**: Sprint 1 (authentication for enterprise access)
 
-**Targets**:
-- 1000+ farms
-- 10+ Fortune 500 ag companies
-- 3+ government agencies
-
-**Success Criteria**:
-- Profitability (AgStack self-sustaining)
-- Market dominance (>50% of new ag data platforms use BITE/PANCAKE)
-
----
-
-## 🎓 Success Metrics (Summary)
-
-| Phase | Timeline | Key Metric | Target |
-|-------|----------|------------|--------|
-| **Phase 1: Pilots** | Q1 2025 | Farm deployments | 10 farms |
-|  |  | Vendor adapters | 3 adapters |
-|  |  | Benchmarks published | 1 paper |
-| **Phase 2: Hardening** | Q2 2025 | Uptime | 99.9% |
-|  |  | Scale | 10M BITEs |
-|  |  | Security | SOC 2 audit |
-| **Phase 3: Growth** | Q3-Q4 2025 | Vendors | 10+ adapters |
-|  |  | Farms | 100+ farms |
-|  |  | Contributors | 50+ devs |
-| **Phase 4: Standards** | 2026 | Adoption | 1000+ farms |
-|  |  | Recognition | ISO draft |
-|  |  | Sustainability | AgStack profitable |
+**See**: `/sprints/SPRINT_2_ENTERPRISE_MIGRATION.md`
 
 ---
 
-## 💰 Funding Requirements
+## Sprint 3: Digital Payments Integration (Weeks 25-36)
 
-### Phase 1 (Q1 2025): $150K
+**Goal**: Enable PANCAKE to process digital payments (cryptocurrency and fiat) using Hyperledger Fabric
 
-**Breakdown**:
-- Engineering (2 FTE × $75K/6mo) = $75K
-- Infrastructure (AWS, CI/CD) = $10K
-- Farm pilots (10 × $1K stipend) = $10K
-- Vendor bounties (3 × $5K) = $15K
-- Benchmarks (annotators, compute) = $20K
-- Conferences (travel, booth) = $10K
-- Contingency (20%) = $10K
+### Phase 1: Hyperledger Fabric Foundation (Weeks 25-28)
+- Hyperledger Fabric network setup
+- Payment processing chaincode
+- Cryptocurrency payment gateway (Bitcoin, Ethereum, stablecoins)
 
-**Funding Source**: AgStack membership fees
+**Deliverables**:
+- Hyperledger Fabric network running
+- Payment processing chaincode
+- Cryptocurrency gateway
 
-### Phase 2 (Q2 2025): $200K
+### Phase 2: Fiat Integration & MEAL Alignment (Weeks 29-32)
+- Fiat payment gateway integration (Stripe, PayPal)
+- MEAL packet structure for payments
+- Automatic MEAL entry creation
 
-**Breakdown**:
-- Engineering (3 FTE) = $112K
-- Security audit = $30K
-- Infrastructure (production) = $20K
-- DevOps (Kubernetes, monitoring) = $20K
-- Contingency = $18K
+**Deliverables**:
+- Fiat payment processing
+- Payment MEAL packet integration
+- Payment querying via PANCAKE
 
-### Phase 3 (Q3-Q4 2025): $400K
+### Phase 3: Production Hardening (Weeks 33-36)
+- Security audit and penetration testing
+- Performance optimization
+- Payment reconciliation system
+- Complete documentation
 
-**Breakdown**:
-- Engineering (4 FTE) = $300K
-- Marketing (conferences, content) = $50K
-- Vendor onboarding = $30K
-- Contingency = $20K
+**Deliverables**:
+- Security audit report
+- Performance benchmarks
+- Payment reconciliation system
+- Production-ready system
 
-### Phase 4 (2026): $500K
+**Success Metrics**:
+- Payment success rate: >99.5%
+- Transaction latency: <5s crypto, <2s fiat (p95)
+- MEAL packet creation: 100% (every payment creates MEAL packet)
+- Payment volume: $1M+ processed in first 6 months
 
-**Breakdown**:
-- Engineering (5 FTE) = $375K
-- Standards body participation = $50K
-- Legal (IP, compliance) = $50K
-- Contingency = $25K
+**Dependencies**: Sprint 1 (authentication for payment authorization)
 
-**Total 2-Year Cost**: $1.25M
-
-**Funding Path**:
-- AgStack membership (10 × $50K sponsors) = $500K
-- Government grants (USDA SBIR Phase I/II) = $500K
-- Foundation grants (Gates, Buffett) = $250K
+**See**: `/sprints/SPRINT_3_PAYMENTS.md`
 
 ---
 
-## ⚠️ Go/No-Go Decision Points
+## Sprint 4: Data Wallets & Chain of Custody (Weeks 37-48)
 
-### After Phase 1 (Q1 2025)
+**Goal**: Implement data wallets with verifiable credentials and chain of custody for supply chain traceability
 
-**Go Criteria** (all must pass):
-- ✅ 8+ of 10 farms satisfied (NPS >40)
-- ✅ 3+ vendor adapters live
-- ✅ Multi-pronged RAG >1.5x baseline (benchmarks)
-- ✅ Economics <$100/month (self-hosted)
+### Phase 1: Identity & Credentials Foundation (Weeks 37-40)
+- Hyperledger Indy network setup
+- Hyperledger Aries agent integration
+- Verifiable credentials issuance and verification
+- Integration with Sprint 1 OECD identity
 
-**If NO-GO**: Pivot (simplify to BITE-only, no PANCAKE)
+**Deliverables**:
+- Hyperledger Indy network running
+- Aries agent operational
+- Verifiable credentials system
+- OECD identity integration
 
-### After Phase 2 (Q2 2025)
+### Phase 2: Data Wallet & Chain of Custody (Weeks 41-44)
+- Data wallet structure and storage
+- Chain of custody MEAL packet structure
+- Authorized access control
+- Smart contract-based unlock
 
+**Deliverables**:
+- Data wallet functional
+- Chain of custody MEAL packets
+- Access control system
+
+### Phase 3: Use Cases & Production (Weeks 45-48)
+- EUDR compliance implementation
+- Food safety traceability
+- Other certification use cases
+- Complete documentation and testing profiles
+
+**Deliverables**:
+- EUDR compliance working
+- Food safety traceability working
+- Testing profiles for all use cases
+- Production-ready system
+
+**Success Metrics**:
+- Credential issuance: >1000 credentials issued
+- Custody transfers: >5000 custody transfers recorded
+- EUDR compliance: 100% of coffee shipments have certificates
+- Food safety traceability: 100% of products traceable
+
+**Dependencies**: Sprint 1 (identity for verifiable credentials), Sprint 3 (payments for supply chain transactions)
+
+**See**: `/sprints/SPRINT_4_DATA_WALLETS.md`
+
+---
+
+## Core PANCAKE Development (Ongoing)
+
+**Parallel to all sprints**: Core PANCAKE components continue development
+
+### BITE (Bidirectional Interchange Transport Envelope)
+- ✅ Specification complete
+- ✅ POC implementation complete
+- 🔄 Production hardening (ongoing)
+
+### SIP (Sensor Index Pointer)
+- ✅ Specification complete
+- ✅ POC implementation complete
+- 🔄 Production hardening (ongoing)
+
+### MEAL (Multi-User Engagement Asynchronous Ledger)
+- ✅ Specification complete
+- ✅ POC implementation complete
+- 🔄 Production hardening (ongoing)
+
+### TAP (Third-party Agentic-Pipeline)
+- ✅ Specification complete
+- ✅ Multi-vendor POC complete
+- 🔄 Production hardening (ongoing)
+
+### PANCAKE Core (Storage & AI)
+- ✅ POC complete (PostgreSQL + pgvector)
+- ✅ Multi-pronged RAG working
+- 🔄 Production scaling (ongoing)
+
+**See**: `/docs/` for core specifications
+
+---
+
+## Integration Points
+
+### Sprint 1 → Sprint 2
+- Enterprise FMIS migration requires authentication for secure data access
+- User identity proofing enables enterprise trust
+
+### Sprint 1 → Sprint 3
+- Payment processing requires authentication for authorization
+- Risk-based authentication for high-value transactions
+
+### Sprint 1 → Sprint 4
+- OECD identity provides foundation for verifiable credentials
+- Identity proofing enables credential issuance
+
+### Sprint 2 → Sprint 3
+- Enterprise data migration enables payment integration with FMIS data
+- "PANCAKE Inside" architecture supports payment workflows
+
+### Sprint 3 → Sprint 4
+- Payments can trigger custody transfers
+- Payment records linked to chain of custody records
+
+---
+
+## Success Metrics (12-Month Goals)
+
+### Technical Metrics
+- **Authentication**: 100% OECD-compliant, >50% MFA adoption
+- **Enterprise Migration**: 5+ enterprises migrated, >99% data completeness
+- **Payments**: >99.5% success rate, $1M+ processed
+- **Data Wallets**: >1000 credentials issued, >5000 custody transfers
+
+### Business Metrics
+- **Enterprise Adoption**: 5+ enterprises using PANCAKE
+- **Payment Volume**: $1M+ processed in first 6 months
+- **EUDR Compliance**: 100% of coffee shipments compliant
+- **Food Safety**: 100% of products traceable
+
+### Community Metrics
+- **Contributors**: 50+ GitHub contributors
+- **Documentation**: Complete API and user documentation
+- **Testing**: All use cases have testing profiles
+
+---
+
+## Risk Management
+
+### Technical Risks
+- **Hyperledger Complexity**: Mitigated by using managed services and detailed documentation
+- **Integration Challenges**: Mitigated by phased approach and clear integration points
+- **Performance**: Mitigated by continuous benchmarking and optimization
+
+### Business Risks
+- **Enterprise Resistance**: Mitigated by "PANCAKE Inside" architecture (no need to replace FMIS)
+- **Regulatory Compliance**: Mitigated by deferring KYC/AML to later, designing for future compliance
+- **Adoption**: Mitigated by clear ROI demonstration and gradual migration
+
+---
+
+## Go/No-Go Decision Points
+
+### After Sprint 1 (Week 12)
 **Go Criteria**:
-- ✅ 99.9% uptime achieved
+- ✅ Identity proofing working
+- ✅ MFA implemented
+- ✅ OAuth2/OpenID Connect operational
 - ✅ Security audit passed
-- ✅ 50+ farms deployed (organic growth)
 
-**If NO-GO**: Sunset (make repos read-only, archive)
+**If NO-GO**: Extend Sprint 1, do not proceed to Sprint 2
 
-### After Phase 3 (Q4 2025)
-
+### After Sprint 2 (Week 24)
 **Go Criteria**:
-- ✅ 100+ farms, 10+ vendors
-- ✅ AgStack membership revenue >$200K/year (sustainability)
-- ✅ Community contributions >20% of commits
+- ✅ AI-assisted connector builder working
+- ✅ Migration tool functional
+- ✅ "PANCAKE Inside" architecture validated
+- ✅ 1+ enterprise pilot successful
 
-**If NO-GO**: Maintenance mode (bug fixes only, no new features)
+**If NO-GO**: Extend Sprint 2, do not proceed to Sprint 3
 
----
+### After Sprint 3 (Week 36)
+**Go Criteria**:
+- ✅ Payment processing working (crypto + fiat)
+- ✅ MEAL integration complete
+- ✅ Security audit passed
+- ✅ 100+ test payments successful
 
-## 📋 Immediate Next Steps (Week 1)
+**If NO-GO**: Extend Sprint 3, do not proceed to Sprint 4
 
-### 1. AgStack Coordination
+### After Sprint 4 (Week 48)
+**Go Criteria**:
+- ✅ Data wallets functional
+- ✅ EUDR compliance working
+- ✅ Food safety traceability working
+- ✅ All testing profiles passing
 
-**Tasks**:
-- [ ] Present to AgStack TAC (request charter approval)
-- [ ] Form BITE/PANCAKE TSC (nominate 7 members)
-- [ ] Set up RFC process (github.com/agstack/bite-rfcs)
-- [ ] Announce publicly (blog post, press release)
-
-**Owner**: Project lead  
-**Deadline**: 2 weeks
-
-### 2. Farm Pilot Recruitment
-
-**Tasks**:
-- [ ] Identify 10 candidate farms (diverse)
-- [ ] Reach out (pitch deck, economics, timeline)
-- [ ] Sign MOUs (pilot agreement)
-- [ ] Schedule deployments (Jan-Feb 2025)
-
-**Owner**: Community manager  
-**Deadline**: 4 weeks
-
-### 3. Vendor Outreach
-
-**Tasks**:
-- [ ] Create TAP adapter guide (5-page quickstart)
-- [ ] Contact 10 vendors (Planet, DTN, CropX, AgriWebb, FarmLogs, Granular, Climate FieldView, Trimble, Raven, Ag Leader)
-- [ ] Offer free consulting (1-week sprint per vendor)
-
-**Owner**: Developer relations  
-**Deadline**: 6 weeks
-
-### 4. Benchmark Setup
-
-**Tasks**:
-- [ ] Build query dataset (100 queries to start)
-- [ ] Recruit annotators (3 agricultural experts)
-- [ ] Set up evaluation framework (NDCG, precision)
-- [ ] Run baseline experiments (keyword, semantic-only)
-
-**Owner**: Research engineer  
-**Deadline**: 8 weeks
+**If NO-GO**: Extend Sprint 4, additional hardening needed
 
 ---
 
-## 🎯 Definition of Success (24 Months)
+## Resource Requirements
 
-**Technical**:
-- ✅ BITE/PANCAKE production-ready (99.9% uptime)
-- ✅ 10M+ BITEs indexed
-- ✅ Multi-pronged RAG >2x baselines (published)
+### Engineering Team
+- **Sprint 1**: 2 FTE (authentication specialists)
+- **Sprint 2**: 3 FTE (migration, AI, voice API specialists)
+- **Sprint 3**: 2 FTE (blockchain, payment specialists)
+- **Sprint 4**: 2 FTE (identity, credential specialists)
 
-**Adoption**:
-- ✅ 1000+ farms using PANCAKE
-- ✅ 10+ vendors offering TAP adapters
-- ✅ 10+ countries represented
+### Infrastructure
+- **Development**: AWS/GCP/Azure (staging environment)
+- **Testing**: Local and cloud test environments
+- **Production**: Multi-region deployment (after Sprint 4)
 
-**Financial**:
-- ✅ AgStack membership revenue >$500K/year (self-sustaining)
-- ✅ 3+ vendors offering "Hosted PANCAKE" (SaaS, generating revenue)
-
-**Standards**:
-- ✅ BITE/SIP submitted to ISO
-- ✅ OGC recognition (listed in standards catalog)
-
-**Community**:
-- ✅ 100+ GitHub contributors
-- ✅ 50+ open-source adapters (community-built)
+### External Services
+- **Hyperledger Fabric**: Managed service or self-hosted
+- **Hyperledger Indy/Aries**: Managed service or self-hosted
+- **Payment Gateways**: Stripe, PayPal (production accounts)
+- **Security Audit**: Third-party security firm
 
 ---
 
-## 📞 Contact & Resources
+## Documentation Structure
 
-**GitHub**: github.com/agstack/pancake (public repo)  
-**Docs**: docs.agstack.org/pancake  
-**Forum**: forum.agstack.org/c/pancake  
-**Email**: pancake@agstack.org  
-**Slack**: agstack.slack.com #pancake
+All documentation organized in `/docs/`, `/sprints/`, `/testing/`, `/strategic/`, `/archive/`
 
-**Project Lead**: TBD (recommend: current POC author)  
-**AgStack TAC Liaison**: TBD  
-**TSC Members**: TBD (elect after charter approval)
+**See**: `README.md` for complete folder structure
 
 ---
 
-**Document Status**: Roadmap v1.0  
-**Last Updated**: November 2024  
-**Next Review**: March 2025 (post-Phase 1)  
-**License**: CC BY 4.0
+## Next Steps (Week 1)
 
+1. **Sprint 1 Kickoff**
+   - [ ] Form Sprint 1 team
+   - [ ] Set up development environment
+   - [ ] Review Sprint 1 plan
+   - [ ] Begin Phase 1 tasks
+
+2. **Core PANCAKE Development**
+   - [ ] Continue BITE/SIP/MEAL/TAP production hardening
+   - [ ] Performance optimization
+   - [ ] Documentation updates
+
+3. **Community Building**
+   - [ ] Update AgStack community on roadmap
+   - [ ] Recruit contributors for Sprint 1
+   - [ ] Set up communication channels
+
+---
+
+**An AgStack Project | Powered by The Linux Foundation**
+
+**Learn more**: https://agstack.org/pancake  
+**GitHub**: https://github.com/agstack/pancake  
+**License**: Apache 2.0 (Code) | CC BY 4.0 (Documentation)
