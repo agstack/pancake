@@ -13,9 +13,9 @@ The PANCAKE repository is organized into clear directories for easy navigation a
 pancake/
 ├── README.md                 # Main entry point
 ├── ROADMAP.md               # Unified 48-week roadmap
+├── MOTIVATION.md            # Why PANCAKE exists (AI-enablement focus)
 ├── FOLDER_STRUCTURE.md      # This file
 ├── GOVERNANCE.md            # Contribution guidelines
-├── pancake_config.yaml      # Configuration reference
 │
 ├── docs/                    # Core specifications
 │   ├── BITE.md             # Universal data format
@@ -23,7 +23,8 @@ pancake/
 │   ├── SIP.md               # Sensor/actuator protocol
 │   ├── MEAL.md              # Collaboration ledger
 │   ├── TAP.md               # Vendor integration
-│   └── SIRUP.md             # Enriched data payload
+│   ├── SIRUP.md             # Enriched data payload
+│   └── TAP_VENDOR_GUIDE.md  # Vendor integration guide
 │
 ├── sprints/                 # Sprint plans (12 weeks each)
 │   ├── SPRINT_1_USER_AUTHENTICATION_UPGRADE.md
@@ -41,7 +42,14 @@ pancake/
 │   ├── EU_HORIZON_GRANTS_PROPOSAL.md
 │   ├── OECD_AUTHENTICATION_ALIGNMENT.md
 │   ├── openagri_integration.md
-│   └── OPENAGRI_INTEGRATION_ANALYSIS.md
+│   ├── CRITICAL_ANALYSIS_PANCAKE_VALUE_PROPOSITION.md
+│   ├── RESEARCH_ANALYSIS_SPATIO_TEMPORAL_RAG.md
+│   └── research/            # Research documents
+│       ├── DPI for Agriculture Sector_Final.pdf
+│       ├── DPI_Agriculture.txt
+│       ├── Permissively Licensed Data Stores with Spatio-Temporal & AI Capabilities.pdf
+│       ├── StateAIReport-2025.txt
+│       └── StateAIReport-2025ONLINE.pdf
 │
 ├── implementation/          # POC and code
 │   ├── POC_Nov20_BITE_PANCAKE.ipynb
@@ -50,6 +58,8 @@ pancake/
 │   ├── IMPLEMENTATION.md
 │   ├── requirements_poc.txt
 │   ├── setup_postgres.sh
+│   ├── pancake_config.yaml  # Configuration reference
+│   ├── benchmark_results.png # Performance benchmarks
 │   ├── meal.py
 │   ├── tap_adapter_base.py
 │   ├── tap_adapters.py
