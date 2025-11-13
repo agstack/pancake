@@ -254,6 +254,11 @@ This roadmap integrates four major development sprints into a cohesive 48-week (
 ### PANCAKE Core (Storage & AI)
 - ✅ POC complete (PostgreSQL + pgvector)
 - ✅ Multi-pronged RAG working
+- 🔄 **Enhanced Context Management** (integrated with Sprint 2):
+  - Hierarchical context compression
+  - Temporal context windows
+  - Spatial context aggregation
+  - Active memory for agents
 - 🔄 Production scaling (ongoing)
 
 **See**: `/docs/` for core specifications

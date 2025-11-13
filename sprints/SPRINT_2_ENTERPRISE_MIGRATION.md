@@ -42,12 +42,22 @@
 - Bidirectional sync capability (FMIS ↔ PANCAKE)
 - OpenAgri modular integration (Weather, Pest, Calendar, Irrigation)
 - Performance optimization (fast queries, reasonable writes)
+- **Enhanced Context Management** (from research analysis):
+  - Hierarchical context compression (BITE summarization, temporal/spatial aggregation)
+  - Temporal context windows (recent vs. historical data weighting)
+  - Spatial context aggregation (GeoID proximity grouping)
+  - Multi-scale context (field-level, farm-level, region-level summaries)
 
 ### Phase 3: Agentic Workflows & Voice API (Weeks 9-12)
 **Goal**: Agentic workflows and Voice API as primary UX
 
 **Deliverables**:
 - Agentic workflows module (autonomous data processing)
+- **Active Memory for Agents** (from research analysis):
+  - Session-based context management
+  - Memory compression and summarization
+  - Memory replay for persistent context
+  - MEAL integration for agent memory
 - Voice API (speech-to-text, natural language queries, text-to-speech)
 - Mobile and desktop interfaces
 - Complete documentation and migration guides
