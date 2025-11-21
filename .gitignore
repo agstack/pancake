@@ -50,3 +50,5 @@ credentials/
 *.tmp
 *.bak
 *.swp
+
+.pancake_db_port
