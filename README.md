@@ -15,8 +15,8 @@
 git clone https://github.com/agstack/pancake.git
 cd pancake
 
-# Set up PostgreSQL with pgvector
-./implementation/setup_postgres.sh
+# Set up dockerised PostgreSQL with pgvector
+bash implementation/setup_postgres_docker.sh
 
 # Install dependencies
 pip install -r implementation/requirements_poc.txt
