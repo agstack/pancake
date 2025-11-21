@@ -15,8 +15,13 @@
 git clone https://github.com/agstack/pancake.git
 cd pancake
 
+# Make the script executable (only needed once)
+chmod +x implementation/setup_postgres_docker.sh
+
 # Set up dockerised PostgreSQL with pgvector
 bash implementation/setup_postgres_docker.sh
+or
+./implementation/setup_postgres_docker.sh
 
 # Install dependencies
 pip install -r implementation/requirements_poc.txt
