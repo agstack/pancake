@@ -52,3 +52,11 @@ credentials/
 *.swp
 
 .pancake_db_port
+
+farmers_registry.json
+# --- Local Testing Data ---
+# Keeps the test output out of the repo
+pancake_data_lake/
+jhon-tap.py
+test_sync.py
+
