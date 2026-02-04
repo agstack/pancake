@@ -68,6 +68,20 @@ vendors:
       forecast_range: "0-16 days"
       data_types: ["temperature", "precipitation", "humidity", "wind speed", "pressure"]
 
+  - vendor_name: johndeere
+    adapter_class: tap_adapters.johndeere_adapter.JohnDeereAdapter
+    base_url: https://sandboxapi.deere.com/platform
+    auth_method: oauth2
+    timeout: 30
+    credentials:
+      client_id: ${DEERE_CLIENT_ID}
+      client_secret: ${DEERE_CLIENT_SECRET}
+      access_token: ${DEERE_ACCESS_TOKEN}
+      refresh_token: ${DEERE_REFRESH_TOKEN}
+    sirup_types:
+      - custom
+    metadata:
+      description: "Production-ready John Deere integration with auto-refresh."
 
 # Vendor Integration Guidelines
 # ==============================
