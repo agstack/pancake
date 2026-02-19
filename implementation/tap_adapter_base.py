@@ -36,6 +36,11 @@ class SIRUPType(Enum):
     PEST_DISEASE = "pest_disease"
     MARKET_PRICE = "market_price"
     CUSTOM = "custom"
+    WEATHER_DATA = "weather_data"
+    OEM_DATA = "oem_data"
+    FINANCIAL_BENCHMARK = "financial_benchmark"
+    SOIL_DATA = "soil_data"
+    
 
 
 class AuthMethod(Enum):
@@ -46,6 +51,8 @@ class AuthMethod(Enum):
     BASIC = "basic"
     BEARER_TOKEN = "bearer_token"
     CUSTOM = "custom"
+    PUBLIC = "public"
+    CUSTOM_HMAC = "custom_hmac"
 
 
 class TAPAdapter(ABC):
@@ -98,6 +105,25 @@ class TAPAdapter(ABC):
         
         # Initialize vendor-specific state
         self._initialize()
+
+
+
+    def get_bite(self, geoid: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """The standard Pancake orchestration flow"""
+        # 1. Fetch raw data from the vendor
+        raw_data = self.get_vendor_data(geoid, params)
+        if not raw_data:
+            return None
+        
+        # 2. Transform raw data into a SIRUP payload
+        # Grabs the first sirup type defined in your YAML/Enum
+        sirup_type = self.sirup_types[0] if hasattr(self, 'sirup_types') and self.sirup_types else None
+        sirup = self.transform_to_sirup(raw_data, sirup_type)
+        if not sirup:
+            return None
+            
+        # 3. Wrap the SIRUP into a BITE envelope
+        return self.sirup_to_bite(sirup, geoid, params)
     
     def _initialize(self):
         """Optional: Vendor-specific initialization (auth, validation, etc.)"""
@@ -214,6 +240,24 @@ class TAPAdapter(ABC):
             "metadata": self.metadata
         }
 
+class OAuth2TAPAdapter(TAPAdapter):
+    """Base class for all OAuth2-based OEM adapters (JD, CNH, etc.)"""
+    
+    def load_registry(self) -> Dict[str, Any]:
+        registry_path = 'farmers_registry.json'
+        if os.path.exists(registry_path):
+            with open(registry_path, 'r') as f:
+                return json.load(f)
+        return {}
+
+    def save_registry(self, registry: Dict[str, Any]):
+        with open('farmers_registry.json', 'w') as f:
+            json.dump(registry, f, indent=4)
+
+    @abstractmethod
+    def refresh_token(self, farmer_id: str) -> bool:
+        """Each vendor has a different refresh URL/logic"""
+        pass
 
 class TAPAdapterFactory:
     """

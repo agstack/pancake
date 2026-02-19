@@ -22,9 +22,9 @@ import json
 from datetime import datetime
 from typing import Dict, Any, Optional
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from tap_adapter_base import TAPAdapter, SIRUPType, create_bite_from_sirup
+from tap_adapter_base import OAuth2TAPAdapter, SIRUPType, create_bite_from_sirup
 
-class JohnDeereAdapter(TAPAdapter):
+class JohnDeereAdapter(OAuth2TAPAdapter):
     """
     Adapter for John Deere Operations Center
     Provides: CUSTOM (Organization/Equipment Data)
@@ -34,20 +34,6 @@ class JohnDeereAdapter(TAPAdapter):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.config = config
-
-
-    def load_registry(self) -> Dict[str, Any]:
-        """Loads the local farmer token registry"""
-        registry_path = 'farmers_registry.json'
-        if os.path.exists(registry_path):
-            with open(registry_path, 'r') as f:
-                return json.load(f)
-        return {}
-
-    def save_registry(self, registry: Dict[str, Any]):
-        """Saves updated tokens back to the registry"""
-        with open('farmers_registry.json', 'w') as f:
-            json.dump(registry, f, indent=4)
 
     def refresh_token(self, farmer_id: str) -> bool:
         """Handles OAuth2 token refresh logic"""
@@ -67,7 +53,7 @@ class JohnDeereAdapter(TAPAdapter):
         }
         
         # Use the token endpoint from config
-        token_url = "https://signin.johndeere.com/oauth2/aus78av9p4u0uW7sj357/v1/token"
+        token_url = self.config.get("token_url", "https://signin.johndeere.com/oauth2/aus78av9p4u0uW7sj357/v1/token")
         response = requests.post(token_url, data=payload)
 
         if response.status_code == 200:
