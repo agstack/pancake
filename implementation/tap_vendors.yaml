@@ -68,6 +68,108 @@ vendors:
       forecast_range: "0-16 days"
       data_types: ["temperature", "precipitation", "humidity", "wind speed", "pressure"]
 
+  - vendor_name: johndeere
+    adapter_class: tap_adapters.johndeere_adapter.JohnDeereAdapter
+    base_url: https://sandboxapi.deere.com/platform
+    auth_method: oauth2
+    timeout: 30
+    token_url: https://signin.johndeere.com/oauth2/aus78av9p4u0uW7sj357/v1/token
+    credentials:
+      client_id: ${DEERE_CLIENT_ID}
+      client_secret: ${DEERE_CLIENT_SECRET}
+      access_token: ${DEERE_ACCESS_TOKEN}
+      refresh_token: ${DEERE_REFRESH_TOKEN}
+    sirup_types:
+      - custom
+    metadata:
+      description: "Production-ready John Deere integration with auto-refresh."
+
+  - vendor_name: newholland
+    adapter_class: tap_adapters.cnh_industrial_adapter.CNHIndustrialAdapter
+    base_url: https://api.cnhindustrial.com/platform
+    auth_method: oauth2
+    credentials:
+      client_id: ${CNH_CLIENT_ID}
+      client_secret: ${CNH_CLIENT_SECRET}
+    sirup_types:
+      - custom
+    metadata:
+      description: "Production-ready chn  integration with auto-refresh."
+
+
+  - vendor_name: climate_fieldview
+    adapter_class: tap_adapters.fieldview_adapter.FieldViewAdapter
+    base_url: https://platform.climate.com/v4
+    auth_method: oauth2
+    credentials:
+      client_id: ${CLIMATE_CLIENT_ID}
+      client_secret: ${CLIMATE_CLIENT_SECRET}
+      api_key: ${CLIMATE_API_KEY}
+
+
+  - vendor_name: usda_nass
+    adapter_class: tap_adapters.usda_nass_adapter.USDANASSAdapter
+    base_url: http://quickstats.nass.usda.gov/api/api_GET
+    auth_method: api_key
+    credentials:
+      api_key: ${USDA_NASS_API_KEY}
+    sirup_types:
+      - market_price
+    metadata:
+      description: "Production-ready usda  integration with auto-refresh."
+
+  - vendor_name: leaf_aggregator
+    adapter_class: tap_adapters.leaf_adapter.LeafAdapter
+    base_url: http://api.withleaf.io/services/inventory/api
+    auth_method: api_key
+    credentials:
+      api_key: ${LEAF_API_KEY}
+    sirup_types:
+      - custom
+    metadata:
+      description: "Production-ready leaf  integration with auto-refresh."
+
+  - vendor_name: noaa_weather
+    adapter_class: tap_adapters.noaa_weather_adapter.NOAAWeatherAdapter
+    base_url: http://api.weather.gov
+    auth_method: public
+    sirup_types:
+      - weather_data
+    metadata:
+      description: "Production-ready noaa  integration with auto-refresh."
+
+  - vendor_name: raven_slingshot
+    adapter_class: tap_adapters.raven_slingshot.RavenSlingshotAdapter
+    base_url: ${RAVEN_BASE_URL}
+    auth_method: custom_hmac
+    credentials:
+      api_key: ${RAVEN_API_KEY}
+      shared_secret: ${RAVEN_SHARED_SECRET}
+      access_key: ${RAVEN_ACCESS_KEY}
+    sirup_types:
+      - oem_data
+    metadata:
+      description: "Production-ready raven  integration with auto-refresh."
+
+  - vendor_name: usda_arms
+    adapter_class: tap_adapters.usda_arms_adapter.USDAArmsAdapter
+    base_url: http://api.ers.usda.gov/data/arms
+    auth_method: api_key
+    credentials:
+      api_key: ${USDA_ERS_KEY}
+    sirup_types:
+      - financial_benchmark
+    metadata:
+      description: "Production-ready usda_arms  integration with auto-refresh."
+
+  - vendor_name: soil_data
+    adapter_class: tap_adapters.soil_data_adapter.SoilDataAdapter
+    base_url: https://SDMDataAccess.sc.egov.usda.gov/Tabular/post.rest
+    auth_method: none
+    sirup_types:
+      - soil_data
+    metadata:
+      description: "USDA NRCS Soil Data Access (SDA) for organic matter and mapunit data."
 
 # Vendor Integration Guidelines
 # ==============================

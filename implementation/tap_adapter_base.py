@@ -16,8 +16,12 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from enum import Enum
+from dotenv import load_dotenv
 import importlib
 import yaml
+import os
+import json
+load_dotenv()
 
 
 class SIRUPType(Enum):
@@ -32,16 +36,23 @@ class SIRUPType(Enum):
     PEST_DISEASE = "pest_disease"
     MARKET_PRICE = "market_price"
     CUSTOM = "custom"
+    WEATHER_DATA = "weather_data"
+    OEM_DATA = "oem_data"
+    FINANCIAL_BENCHMARK = "financial_benchmark"
+    SOIL_DATA = "soil_data"
+    
 
 
 class AuthMethod(Enum):
     """Supported authentication methods"""
-    NONE = "none"  # No authentication required
+    NONE = "none"
     API_KEY = "api_key"
     OAUTH2 = "oauth2"
     BASIC = "basic"
     BEARER_TOKEN = "bearer_token"
     CUSTOM = "custom"
+    PUBLIC = "public"
+    CUSTOM_HMAC = "custom_hmac"
 
 
 class TAPAdapter(ABC):
@@ -94,11 +105,44 @@ class TAPAdapter(ABC):
         
         # Initialize vendor-specific state
         self._initialize()
+
+
+
+    def get_bite(self, geoid: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """The standard Pancake orchestration flow"""
+        # 1. Fetch raw data from the vendor
+        raw_data = self.get_vendor_data(geoid, params)
+        if not raw_data:
+            return None
+        
+        # 2. Transform raw data into a SIRUP payload
+        # Grabs the first sirup type defined in your YAML/Enum
+        sirup_type = self.sirup_types[0] if hasattr(self, 'sirup_types') and self.sirup_types else None
+        sirup = self.transform_to_sirup(raw_data, sirup_type)
+        if not sirup:
+            return None
+            
+        # 3. Wrap the SIRUP into a BITE envelope
+        return self.sirup_to_bite(sirup, geoid, params)
     
     def _initialize(self):
         """Optional: Vendor-specific initialization (auth, validation, etc.)"""
         pass
     
+    def load_registry(self) -> Dict[str, Any]:
+        """Generic helper to load farmer tokens/data"""
+        path = 'farmers_registry.json'
+        if not os.path.exists(path): return {}
+        with open(path, 'r') as f:
+            try: return json.load(f)
+            except: return {}
+
+    def save_registry(self, registry: Dict[str, Any]):
+        """Generic helper to save farmer tokens/data"""
+        path = 'farmers_registry.json'
+        with open(path, 'w') as f:
+            json.dump(registry, f, indent=4)
+
     @abstractmethod
     def get_vendor_data(self, geoid: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
@@ -196,6 +240,24 @@ class TAPAdapter(ABC):
             "metadata": self.metadata
         }
 
+class OAuth2TAPAdapter(TAPAdapter):
+    """Base class for all OAuth2-based OEM adapters (JD, CNH, etc.)"""
+    
+    def load_registry(self) -> Dict[str, Any]:
+        registry_path = 'farmers_registry.json'
+        if os.path.exists(registry_path):
+            with open(registry_path, 'r') as f:
+                return json.load(f)
+        return {}
+
+    def save_registry(self, registry: Dict[str, Any]):
+        with open('farmers_registry.json', 'w') as f:
+            json.dump(registry, f, indent=4)
+
+    @abstractmethod
+    def refresh_token(self, farmer_id: str) -> bool:
+        """Each vendor has a different refresh URL/logic"""
+        pass
 
 class TAPAdapterFactory:
     """
@@ -222,6 +284,24 @@ class TAPAdapterFactory:
         
         if config_path:
             self.load_from_config(config_path)
+
+    def _inject_env_vars(self, config_data):
+        """Recursively replaces ${VAR} with environment variables."""
+        if isinstance(config_data, dict):
+            for k, v in config_data.items():
+                if isinstance(v, str) and v.startswith("${") and v.endswith("}"):
+                    env_var = v[2:-1]
+                    # Update with env value, fallback to original if not found
+                    config_data[k] = os.getenv(env_var, v)
+                else:
+                    self._inject_env_vars(v)
+        elif isinstance(config_data, list):
+            for i in range(len(config_data)):
+                if isinstance(config_data[i], (dict, list)):
+                    self._inject_env_vars(config_data[i])
+                elif isinstance(config_data[i], str) and config_data[i].startswith("${"):
+                    env_var = config_data[i][2:-1]
+                    config_data[i] = os.getenv(env_var, config_data[i])
     
     def load_from_config(self, config_path: str):
         """
@@ -244,6 +324,7 @@ class TAPAdapterFactory:
         """
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
+        self._inject_env_vars(config)
         
         for vendor_config in config.get('vendors', []):
             self.register_adapter(vendor_config)
@@ -262,17 +343,21 @@ class TAPAdapterFactory:
             raise ValueError("vendor_name and adapter_class are required")
         
         # Dynamically import the adapter class
-        module_path, class_name = adapter_class_path.rsplit('.', 1)
-        module = importlib.import_module(module_path)
-        adapter_class = getattr(module, class_name)
-        
-        # Instantiate the adapter
-        adapter = adapter_class(config)
-        self.adapters[vendor_name] = adapter
-        
-        print(f"✓ Registered TAP adapter: {vendor_name}")
-        print(f"  SIRUP types: {[t.value for t in adapter.sirup_types]}")
-    
+        try:
+            module_path, class_name = adapter_class_path.rsplit('.', 1)
+            module = importlib.import_module(module_path)
+            adapter_class = getattr(module, class_name)
+            
+            # Instantiate the adapter
+            adapter = adapter_class(config)
+            self.adapters[vendor_name] = adapter
+            
+            print(f"✓ Registered TAP adapter: {vendor_name}")
+            print(f"  SIRUP types: {[t.value for t in adapter.sirup_types]}")
+            
+        except (ImportError, AttributeError, ModuleNotFoundError) as e:
+            print(f"⚠️  Skipping vendor '{vendor_name}': {e}")    
+
     def get_adapter(self, vendor_name: str) -> Optional[TAPAdapter]:
         """Get adapter by vendor name"""
         return self.adapters.get(vendor_name)
