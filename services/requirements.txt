@@ -1,0 +1,11 @@
+fastapi==0.139.0
+uvicorn==0.50.2
+SQLAlchemy==2.0.51
+PyJWT[crypto]==2.13.0
+httpx==0.28.1
+PyYAML==6.0.3
+python-ulid==3.1.0
+requests==2.32.5
+pytest==9.1.1
+pytest-cov==7.0.0
+ruff==0.15.20
