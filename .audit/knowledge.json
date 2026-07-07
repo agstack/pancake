@@ -24,12 +24,12 @@
     {
       "id": "PC-2026-0003",
       "severity": "medium",
-      "status": "open",
+      "status": "fixed",
       "area": "docs",
       "title": "Sprint-4 wallet docs contradict SD-JWT VC decision",
-      "description": "sprints/SPRINT_4_DATA_WALLETS.md specifies Hyperledger Indy/Aries, contradicting the adopted SD-JWT VC + StatusList2021 + did:web design. Doc must be rewritten to the shipped design.",
+      "description": "sprints/SPRINT_4_DATA_WALLETS.md specified Hyperledger Indy/Aries, contradicting the adopted SD-JWT VC + StatusList2021 + did:web design. Fixed: page rewritten as a superseded/shipped notice mapping the old proposal to the shipped design with links to the normative specs.",
       "discovered": "2026-07-07",
-      "fix_version": null
+      "fix_version": "1.0.0"
     },
     {
       "id": "PC-2026-0004",

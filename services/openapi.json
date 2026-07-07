@@ -1,0 +1,1133 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pancake Grants Service",
+    "description": "Field-ownership and permission-grant service for the AgStack DPI. FieldLists (Merkle ListIDs) + SD-JWT VC grant credentials + StatusList2021 revocation + MEAL audit ledger.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/healthz": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Healthz",
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/healthz/me": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Healthz Me",
+        "description": "Echo the authenticated hub identity (auth smoke check).",
+        "operationId": "healthz_me_healthz_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/fieldlists": {
+      "get": {
+        "tags": [
+          "fieldlists"
+        ],
+        "summary": "List Fieldlists",
+        "operationId": "list_fieldlists_fieldlists_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FieldListOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Fieldlists Fieldlists Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "fieldlists"
+        ],
+        "summary": "Create Fieldlist",
+        "operationId": "create_fieldlist_fieldlists_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FieldListCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/fieldlists/{list_id}": {
+      "get": {
+        "tags": [
+          "fieldlists"
+        ],
+        "summary": "Get Fieldlist",
+        "operationId": "get_fieldlist_fieldlists__list_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "list_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "List Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldListOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fieldlists/{list_id}/proof/{geoid}": {
+      "get": {
+        "tags": [
+          "fieldlists"
+        ],
+        "summary": "Inclusion Proof",
+        "operationId": "inclusion_proof_fieldlists__list_id__proof__geoid__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "list_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "List Id"
+            }
+          },
+          {
+            "name": "geoid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Geoid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InclusionProofOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/grants/issue": {
+      "post": {
+        "tags": [
+          "grants"
+        ],
+        "summary": "Issue Grant",
+        "operationId": "issue_grant_grants_issue_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantIssueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantWithCredential"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/grants/issued": {
+      "get": {
+        "tags": [
+          "grants"
+        ],
+        "summary": "Grants Issued",
+        "operationId": "grants_issued_grants_issued_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GrantOut"
+                  },
+                  "type": "array",
+                  "title": "Response Grants Issued Grants Issued Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/grants/received": {
+      "get": {
+        "tags": [
+          "grants"
+        ],
+        "summary": "Grants Received",
+        "description": "DPI-account credential delivery: the authenticated grantee retrieves\nactive credentials issued to their hub account.",
+        "operationId": "grants_received_grants_received_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GrantWithCredential"
+                  },
+                  "type": "array",
+                  "title": "Response Grants Received Grants Received Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/grants/revoke": {
+      "post": {
+        "tags": [
+          "grants"
+        ],
+        "summary": "Revoke Grant",
+        "operationId": "revoke_grant_grants_revoke_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrantOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/grants/status-list": {
+      "get": {
+        "tags": [
+          "grants"
+        ],
+        "summary": "Status List",
+        "description": "Public revocation bitstring (StatusList2021-style). No auth: it leaks\nnothing but revocation bits.",
+        "operationId": "status_list_grants_status_list_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusListOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/grants/verify": {
+      "post": {
+        "tags": [
+          "grants"
+        ],
+        "summary": "Verify Credential",
+        "description": "Relying-party convenience endpoint: verify a credential issued by THIS\ninstance (signature, expiry, revocation bit). AR nodes embed the same\nlogic locally via pancake_services.grants.sdjwt.",
+        "operationId": "verify_credential_grants_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_verify_credential_grants_verify_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audit/{geoid}": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Audit Events",
+        "operationId": "audit_events_audit__geoid__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "geoid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Geoid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audit/{geoid}/report": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Audit Report",
+        "description": "Compliance report: full provenance plus chain-integrity verification\nfor every MEAL touching this GeoID.",
+        "operationId": "audit_report_audit__geoid__report_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "geoid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Geoid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audit/meals/{meal_id}/verify": {
+      "get": {
+        "tags": [
+          "audit"
+        ],
+        "summary": "Verify Meal Chain",
+        "operationId": "verify_meal_chain_audit_meals__meal_id__verify_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "meal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Meal Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bites": {
+      "get": {
+        "tags": [
+          "bites"
+        ],
+        "summary": "Query Bites",
+        "operationId": "query_bites_bites_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "geoid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Geoid"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "name": "vendor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vendor"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_verify_credential_grants_verify_post": {
+        "properties": {
+          "credential": {
+            "type": "string",
+            "title": "Credential"
+          }
+        },
+        "type": "object",
+        "required": [
+          "credential"
+        ],
+        "title": "Body_verify_credential_grants_verify_post"
+      },
+      "FieldListCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "geoids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Geoids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "geoids"
+        ],
+        "title": "FieldListCreate"
+      },
+      "FieldListOut": {
+        "properties": {
+          "list_id": {
+            "type": "string",
+            "title": "List Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "geoids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Geoids"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "list_id",
+          "name",
+          "geoids",
+          "created_at"
+        ],
+        "title": "FieldListOut"
+      },
+      "GrantIssueRequest": {
+        "properties": {
+          "list_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 64,
+            "title": "List Id"
+          },
+          "grantee_account": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Grantee Account"
+          },
+          "purpose": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Purpose"
+          },
+          "validity_days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Validity Days",
+            "default": 30
+          },
+          "masking_level": {
+            "type": "string",
+            "pattern": "^L[12]$",
+            "title": "Masking Level",
+            "default": "L1"
+          }
+        },
+        "type": "object",
+        "required": [
+          "list_id",
+          "grantee_account",
+          "purpose"
+        ],
+        "title": "GrantIssueRequest"
+      },
+      "GrantOut": {
+        "properties": {
+          "jti": {
+            "type": "string",
+            "title": "Jti"
+          },
+          "list_id": {
+            "type": "string",
+            "title": "List Id"
+          },
+          "grantee_account": {
+            "type": "string",
+            "title": "Grantee Account"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "masking_level": {
+            "type": "string",
+            "title": "Masking Level"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "status_list_index": {
+            "type": "integer",
+            "title": "Status List Index"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jti",
+          "list_id",
+          "grantee_account",
+          "purpose",
+          "masking_level",
+          "status",
+          "status_list_index",
+          "expires_at",
+          "created_at"
+        ],
+        "title": "GrantOut"
+      },
+      "GrantWithCredential": {
+        "properties": {
+          "jti": {
+            "type": "string",
+            "title": "Jti"
+          },
+          "list_id": {
+            "type": "string",
+            "title": "List Id"
+          },
+          "grantee_account": {
+            "type": "string",
+            "title": "Grantee Account"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose"
+          },
+          "masking_level": {
+            "type": "string",
+            "title": "Masking Level"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "status_list_index": {
+            "type": "integer",
+            "title": "Status List Index"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "credential": {
+            "type": "string",
+            "title": "Credential"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jti",
+          "list_id",
+          "grantee_account",
+          "purpose",
+          "masking_level",
+          "status",
+          "status_list_index",
+          "expires_at",
+          "created_at",
+          "credential"
+        ],
+        "title": "GrantWithCredential"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "InclusionProofOut": {
+        "properties": {
+          "geoid": {
+            "type": "string",
+            "title": "Geoid"
+          },
+          "list_id": {
+            "type": "string",
+            "title": "List Id"
+          },
+          "proof": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Proof"
+          }
+        },
+        "type": "object",
+        "required": [
+          "geoid",
+          "list_id",
+          "proof"
+        ],
+        "title": "InclusionProofOut"
+      },
+      "RevokeRequest": {
+        "properties": {
+          "jti": {
+            "type": "string",
+            "title": "Jti"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jti"
+        ],
+        "title": "RevokeRequest"
+      },
+      "StatusListOut": {
+        "properties": {
+          "uri": {
+            "type": "string",
+            "title": "Uri"
+          },
+          "encoded": {
+            "type": "string",
+            "title": "Encoded"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uri",
+          "encoded",
+          "size"
+        ],
+        "title": "StatusListOut"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

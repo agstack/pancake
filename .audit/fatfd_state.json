@@ -1,25 +1,23 @@
 {
   "schema_version": "1.0.0",
-  "last_updated": "2026-07-07T17:05:00-07:00",
-  "version": "0.6.0",
+  "last_updated": "2026-07-07T17:30:00-07:00",
+  "version": "1.0.0",
   "current_cycle": {
     "id": "C7",
     "name": "Packaging, docs, final audit",
-    "status": "in_progress"
+    "status": "complete"
   },
   "findings": {
     "total": 5,
-    "fixed": 3,
-    "open": 1,
+    "fixed": 4,
+    "open": 0,
     "deferred": 0
   },
-  "pending_work": [
-    "PC-2026-0003 Sprint-4 wallet docs contradict SD-JWT VC decision (rewrite in C7)"
-  ],
+  "pending_work": [],
   "testing": {
     "test_count": 99,
-    "last_run": "2026-07-07T17:04:00-07:00",
-    "result": "99 passed (services/tests 95 + root legacy regression 4); ruff clean"
+    "last_run": "2026-07-07T17:28:00-07:00",
+    "result": "99 passed (services/tests 95 + root legacy regression 4); ruff clean; e2e demo green; OpenAPI exported (15 paths)"
   },
   "cycle_history": [
     {
@@ -77,6 +75,14 @@
       "finished": "2026-07-07",
       "test_count": 99,
       "notes": "BiteStore: persistence with content-hash dedupe, envelope validation at the boundary, GeoID/type/vendor/time-range querying with pagination. GET /bites API (authenticated). Write-read round-trip test enforced. End-to-end test: TAP runtime -> BiteStore.save -> queryable by GeoID. pgvector column deferred by design (no RAG this sprint)."
+    },
+    {
+      "id": "C7",
+      "name": "Packaging, docs, final audit",
+      "status": "complete",
+      "finished": "2026-07-07",
+      "test_count": 99,
+      "notes": "services/Dockerfile + docker-compose.yml (postgres 16) + .env.example. CI rewritten: ruff + validator + both test suites + e2e demo + testkit smoke on Python 3.12. sprints/SPRINT_4_DATA_WALLETS.md rewritten from Indy/Aries to the shipped SD-JWT design (closes PC-2026-0003). services/README.md (API surface, config, deployment guide), root README updated. export_openapi.py (15 paths). demo/end_to_end_demo.py: issue -> retrieve -> verify -> revoke -> audit, all green. Cycle report in .audit/reports/cycle_report_20260707.md."
     }
   ]
 }
