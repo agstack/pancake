@@ -114,8 +114,8 @@ class MEAL:
             else:
                 meal['packet_sequence']['bite_count'] = 1
             
-            meal['cryptographic_chain']['root_hash'] = packet['packet_hash']
-            meal['cryptographic_chain']['last_packet_hash'] = packet['packet_hash']
+            meal['cryptographic_chain']['root_hash'] = packet['cryptographic']['packet_hash']
+            meal['cryptographic_chain']['last_packet_hash'] = packet['cryptographic']['packet_hash']
         
         return meal
     
@@ -129,7 +129,8 @@ class MEAL:
         content: Optional[Dict[str, Any]] = None,  # For SIP
         bite: Optional[Dict[str, Any]] = None,      # For BITE
         location_index: Optional[Dict[str, Any]] = None,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        previous_packet_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Create a MEAL packet (either SIP or BITE)
@@ -158,7 +159,7 @@ class MEAL:
             
             "sequence": {
                 "number": sequence_number,
-                "previous_packet_id": None if sequence_number == 1 else "prev-id",  # TODO: track previous ID
+                "previous_packet_id": previous_packet_id,
                 "previous_packet_hash": previous_packet_hash
             },
             
@@ -174,14 +175,19 @@ class MEAL:
             "cryptographic": {}
         }
         
-        # Compute hashes
+        # Compute hashes: content hash must be stored before the packet hash
+        # is derived, since the packet hash covers the content hash.
         content_hash = MEAL._compute_content_hash(packet)
+        packet["cryptographic"] = {"content_hash": content_hash}
         packet_hash = MEAL._compute_packet_hash(packet, previous_packet_hash)
         
         packet["cryptographic"] = {
             "content_hash": content_hash,
             "packet_hash": packet_hash,
-            "signature": None  # TODO: Implement digital signatures
+            # Signatures are applied by the persistence layer
+            # (services/pancake_services/grants/mealstore.py), which signs
+            # packet_hash with the instance Ed25519 key.
+            "signature": None
         }
         
         return packet
@@ -231,6 +237,7 @@ class MEAL:
         # Get next sequence number
         sequence_number = meal['packet_sequence']['packet_count'] + 1
         previous_hash = meal['cryptographic_chain']['last_packet_hash']
+        previous_id = meal['packet_sequence']['last_packet_id']
         
         # Create packet
         packet = MEAL.create_packet(
@@ -242,7 +249,8 @@ class MEAL:
             content=content,
             bite=bite,
             location_index=location_index,
-            context=context
+            context=context,
+            previous_packet_id=previous_id
         )
         
         # Update MEAL metadata
@@ -255,12 +263,12 @@ class MEAL:
         else:
             meal['packet_sequence']['bite_count'] += 1
         
-        meal['cryptographic_chain']['last_packet_hash'] = packet['packet_hash']
+        meal['cryptographic_chain']['last_packet_hash'] = packet['cryptographic']['packet_hash']
         
         # Update first packet if this is the first
         if sequence_number == 1:
             meal['packet_sequence']['first_packet_id'] = packet['packet_id']
-            meal['cryptographic_chain']['root_hash'] = packet['packet_hash']
+            meal['cryptographic_chain']['root_hash'] = packet['cryptographic']['packet_hash']
         
         return meal, packet
     
