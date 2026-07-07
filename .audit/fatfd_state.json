@@ -1,10 +1,10 @@
 {
   "schema_version": "1.0.0",
-  "last_updated": "2026-07-07T16:45:00-07:00",
-  "version": "0.4.0",
+  "last_updated": "2026-07-07T17:05:00-07:00",
+  "version": "0.6.0",
   "current_cycle": {
-    "id": "C5",
-    "name": "TAP runtime",
+    "id": "C7",
+    "name": "Packaging, docs, final audit",
     "status": "in_progress"
   },
   "findings": {
@@ -17,9 +17,9 @@
     "PC-2026-0003 Sprint-4 wallet docs contradict SD-JWT VC decision (rewrite in C7)"
   ],
   "testing": {
-    "test_count": 83,
-    "last_run": "2026-07-07T16:44:00-07:00",
-    "result": "83 passed (services/tests 79: merkle 13, sdjwt 12, statuslist 7, testkit 7, auth 8, fieldlists 7, grants 13, meal/audit 8 + root tests/unit/test_meal_legacy.py 4); ruff clean"
+    "test_count": 99,
+    "last_run": "2026-07-07T17:04:00-07:00",
+    "result": "99 passed (services/tests 95 + root legacy regression 4); ruff clean"
   },
   "cycle_history": [
     {
@@ -61,6 +61,22 @@
       "finished": "2026-07-07",
       "test_count": 83,
       "notes": "MealStore: persistent per-ListID MEAL ledger, SHA-256 hash chain, Ed25519 packet signatures, verify_chain with signature checks (closes PC-2026-0001). Lifecycle events logged: fieldlist.created, grant.issued, grant.retrieved, grant.revoked. Audit API: GET /audit/{geoid} (resolves member GeoID -> containing ListIDs), /audit/{geoid}/report with chain integrity, /audit/meals/{id}/verify. Tamper test proves detection. Legacy implementation/meal.py fixed (PC-2026-0004) with regression tests."
+    },
+    {
+      "id": "C5",
+      "name": "TAP runtime",
+      "status": "complete",
+      "finished": "2026-07-07",
+      "test_count": 91,
+      "notes": "Canonical TAP adapter base (pancake_services.tap.adapter_base) + runtime with per-vendor interval scheduler and executor. Retry policy lives in the runtime (exponential backoff, max_retries), adapters stay dumb. FROZEN ingest interface for adapter workstreams: sink(bite) -> None. YAML vendor config with ${VAR} env interpolation; missing env var is a hard startup error (guardrail 7)."
+    },
+    {
+      "id": "C6",
+      "name": "BITE store",
+      "status": "complete",
+      "finished": "2026-07-07",
+      "test_count": 99,
+      "notes": "BiteStore: persistence with content-hash dedupe, envelope validation at the boundary, GeoID/type/vendor/time-range querying with pagination. GET /bites API (authenticated). Write-read round-trip test enforced. End-to-end test: TAP runtime -> BiteStore.save -> queryable by GeoID. pgvector column deferred by design (no RAG this sprint)."
     }
   ]
 }
