@@ -8,7 +8,24 @@
 
 ---
 
-## Quick Start
+## Production Services (July 2026)
+
+The [`services/`](services/README.md) directory contains the production DPI services built on the
+PANCAKE primitives, developed under the FATFD quality harness ([`.audit/`](.audit/README.md)):
+
+- **Grants service**: field ownership as Merkle-rooted FieldLists, permission grants as
+  SD-JWT verifiable credentials with StatusList2021 revocation, a signed MEAL audit ledger,
+  and an OpenScience audit API. Normative specs live in
+  [`services/specs/`](services/specs/CREDENTIAL_PROFILE.md).
+- **TAP runtime**: scheduled vendor-data ingestion with retry policy and env-only secrets.
+- **BITE store**: content-hash-deduplicated persistence, queryable by GeoID.
+
+Start there if you are integrating with the AgStack Asset Registry or building EUDR
+due-diligence flows. The material below documents the original POC.
+
+---
+
+## Quick Start (POC)
 
 ```bash
 # Clone repository

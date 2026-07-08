@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0.0",
+  "findings": [
+    {
+      "id": "PC-2026-0001",
+      "severity": "high",
+      "status": "fixed",
+      "area": "meal",
+      "title": "MEAL packet signatures unimplemented",
+      "description": "implementation/meal.py left cryptographic.signature as None (TODO) and sequence.previous_packet_id hardcoded to 'prev-id'. Fixed: previous_packet_id now tracked through append_packet, and the persistence layer (services/pancake_services/grants/mealstore.py) signs every packet_hash with the instance Ed25519 key and verifies signatures in verify_chain.",
+      "discovered": "2026-07-07",
+      "fix_version": "0.4.0"
+    },
+    {
+      "id": "PC-2026-0002",
+      "severity": "critical",
+      "status": "fixed",
+      "area": "grants",
+      "title": "No service or auth layer exists",
+      "description": "Pancake was POC-grade: no FastAPI service, no authentication, no persistence wiring. Fixed: services/pancake_services/grants is a FastAPI service with hub-delegated RS256/JWKS auth, fieldlists (Merkle ListIDs), SD-JWT VC grant issuance/retrieval/revocation, StatusList2021 revocation, signed MEAL audit ledger, and audit API.",
+      "discovered": "2026-07-07",
+      "fix_version": "0.4.0"
+    },
+    {
+      "id": "PC-2026-0003",
+      "severity": "medium",
+      "status": "fixed",
+      "area": "docs",
+      "title": "Sprint-4 wallet docs contradict SD-JWT VC decision",
+      "description": "sprints/SPRINT_4_DATA_WALLETS.md specified Hyperledger Indy/Aries, contradicting the adopted SD-JWT VC + StatusList2021 + did:web design. Fixed: page rewritten as a superseded/shipped notice mapping the old proposal to the shipped design with links to the normative specs.",
+      "discovered": "2026-07-07",
+      "fix_version": "1.0.0"
+    },
+    {
+      "id": "PC-2026-0004",
+      "severity": "high",
+      "status": "fixed",
+      "area": "meal",
+      "title": "Legacy MEAL hash computed before content_hash stored; verify_chain could never pass",
+      "description": "implementation/meal.py create_packet computed packet_hash while cryptographic.content_hash was still empty, so verify_chain always failed with a hash mismatch; MEAL.create/append_packet also read packet['packet_hash'] instead of packet['cryptographic']['packet_hash'] (KeyError). Both fixed; regression tests in tests/unit/test_meal_legacy.py.",
+      "discovered": "2026-07-07",
+      "fix_version": "0.4.0"
+    },
+    {
+      "id": "PC-2026-0005",
+      "severity": "medium",
+      "status": "learned",
+      "area": "grants",
+      "title": "Issuer key custody is env-var interim",
+      "description": "PANCAKE_ISSUER_KEY (Ed25519) is loaded from the environment; the service refuses to start without it and the key is never logged or serialized. Decision: env var for the sprint, vault (or KMS) before production. Track as a production-readiness gate.",
+      "discovered": "2026-07-07",
+      "fix_version": null
+    }
+  ]
+}

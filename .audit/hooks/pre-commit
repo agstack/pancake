@@ -1,0 +1,11 @@
+#!/bin/sh
+# FATFD pre-commit gate: block commits that break harness integrity.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+if git diff --cached --name-only | grep -qE '^(\.audit/|services/)'; then
+    python3 "$REPO_ROOT/.audit/validate_fatfd.py" || exit 1
+    if [ -x "$REPO_ROOT/.venv/bin/ruff" ]; then
+        "$REPO_ROOT/.venv/bin/ruff" check "$REPO_ROOT/services" || exit 1
+    fi
+fi
+exit 0

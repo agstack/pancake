@@ -1,0 +1,29 @@
+[project]
+name = "pancake-services"
+version = "1.0.0"
+description = "Pancake DPI services: field-ownership grants, TAP runtime, BITE store"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "sqlalchemy>=2.0",
+    "PyJWT[crypto]>=2.8",
+    "httpx>=0.27",
+    "PyYAML>=6.0",
+    "python-ulid>=2.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov", "ruff"]
+postgres = ["psycopg2-binary>=2.9"]
+
+[tool.setuptools.packages.find]
+include = ["pancake_services*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
