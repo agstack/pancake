@@ -95,6 +95,7 @@ def make_app(fake_hub, dev_issuer):
             hub_jwks_url="http://fake-hub/jwks",
             hub_url=overrides.get("hub_url", ""),
             status_list_uri="http://pancake.test/grants/status-list",
+            require_grant_for_weather=overrides.get("require_grant_for_weather", False),
         )
         return create_app(
             settings=settings, issuer=dev_issuer, jwks_cache=StaticJWKSCache(fake_hub)

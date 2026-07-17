@@ -32,6 +32,15 @@ class Settings:
     status_list_size: int = field(
         default_factory=lambda: int(os.environ.get("STATUS_LIST_SIZE", "65536"))
     )
+    # When true, GET /bites for weather_* types requires a valid X-Field-Grant
+    # covering the requested GeoID (consent-gated data plane). Off by default so
+    # the demo degrades gracefully.
+    require_grant_for_weather: bool = field(
+        default_factory=lambda: os.environ.get(
+            "PANCAKE_REQUIRE_GRANT_FOR_WEATHER", "false"
+        ).strip().lower()
+        in ("1", "true", "yes", "on")
+    )
 
 
 def load_settings() -> Settings:

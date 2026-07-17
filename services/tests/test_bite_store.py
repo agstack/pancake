@@ -105,6 +105,29 @@ def test_bites_api_query(client, app, owner_headers):
     assert body["bites"][0]["Header"]["geoid"] == "geo-9"
 
 
+def test_ingest_bite_requires_auth(client):
+    assert client.post("/bites", json=make_bite()).status_code == 401
+
+
+def test_ingest_bite_stores_and_queryable(client, owner_headers):
+    bite = make_bite(geoid="geo-pub", bite_type="pest_disease", vendor="agstack-pnd")
+    resp = client.post("/bites", json=bite, headers=owner_headers)
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["stored"] is True
+    # Duplicate ingest is reported, not an error.
+    dup = client.post("/bites", json=bite, headers=owner_headers)
+    assert dup.status_code == 201 and dup.json()["duplicate"] is True
+    # Queryable back out.
+    got = client.get("/bites", params={"geoid": "geo-pub", "type": "pest_disease"},
+                     headers=owner_headers)
+    assert got.json()["count"] == 1
+
+
+def test_ingest_invalid_envelope_rejected(client, owner_headers):
+    resp = client.post("/bites", json={"Header": {"id": "x"}}, headers=owner_headers)
+    assert resp.status_code == 422
+
+
 def test_tap_to_store_end_to_end(app):
     """The frozen ingest interface: TAP runtime -> BiteStore.save -> queryable."""
     from test_tap_runtime import make_factory, make_schedule
