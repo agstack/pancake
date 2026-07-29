@@ -20,6 +20,7 @@ class Settings:
         )
     )
     hub_url: str = field(default_factory=lambda: os.environ.get("HUB_URL", ""))
+    ar2_node_url: str = field(default_factory=lambda: os.environ.get("AR2_NODE_URL", "http://localhost:8001"))
     status_list_uri: str = field(
         default_factory=lambda: os.environ.get(
             "STATUS_LIST_URI", "http://localhost:8100/grants/status-list"

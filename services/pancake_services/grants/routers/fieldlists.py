@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from pancake_services.grants import merkle
 from pancake_services.grants.auth import get_current_user, get_db
 from pancake_services.grants.mealstore import MealStore
-from pancake_services.grants.models import FieldList, FieldListMember, User
+from pancake_services.grants.models import FieldList, User
 from pancake_services.grants.schemas import FieldListCreate, FieldListOut, InclusionProofOut
 
 router = APIRouter(prefix="/fieldlists", tags=["fieldlists"])
@@ -28,6 +28,21 @@ def _owned(db: Session, user: User, list_id: str) -> FieldList:
     return fieldlist
 
 
+def _fetch_geoids(request: Request, list_id: str) -> list[str]:
+    ar2_url = request.app.state.settings.ar2_node_url
+    headers = {}
+    if "authorization" in request.headers:
+        headers["authorization"] = request.headers["authorization"]
+    try:
+        resp = httpx.get(f"{ar2_url}/list-artifact/{list_id}", headers=headers, timeout=10)
+        resp.raise_for_status()
+        return resp.json().get("members", [])
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch list artifact from AR2: {e}")
+
+
+import httpx
+
 @router.post("", response_model=FieldListOut, status_code=201)
 def create_fieldlist(
     body: FieldListCreate,
@@ -46,12 +61,23 @@ def create_fieldlist(
         return FieldListOut(
             list_id=existing.list_id,
             name=existing.name,
-            geoids=existing.geoids,
+            geoids=members, # Returning from request body
             created_at=existing.created_at,
         )
 
+    # Call AR2 to register the list artifact
+    ar2_url = request.app.state.settings.ar2_node_url
+    headers = {}
+    if "authorization" in request.headers:
+        headers["authorization"] = request.headers["authorization"]
+    try:
+        resp = httpx.post(f"{ar2_url}/list-artifact", json={"members": members}, headers=headers, timeout=10)
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to register list artifact on AR2: {e}")
+
     fieldlist = FieldList(list_id=list_id, name=body.name, owner_id=user.id)
-    fieldlist.members = [FieldListMember(geoid=g) for g in members]
+    # fieldlist.members no longer used
     db.add(fieldlist)
     db.flush()
 
@@ -71,32 +97,36 @@ def create_fieldlist(
 
 
 @router.get("", response_model=list[FieldListOut])
-def list_fieldlists(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_fieldlists(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.execute(select(FieldList).where(FieldList.owner_id == user.id)).scalars()
-    return [
-        FieldListOut(list_id=f.list_id, name=f.name, geoids=f.geoids, created_at=f.created_at)
-        for f in rows
-    ]
+    result = []
+    for f in rows:
+        geoids = _fetch_geoids(request, f.list_id)
+        result.append(FieldListOut(list_id=f.list_id, name=f.name, geoids=geoids, created_at=f.created_at))
+    return result
 
 
 @router.get("/{list_id}", response_model=FieldListOut)
 def get_fieldlist(
-    list_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    list_id: str, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     f = _owned(db, user, list_id)
-    return FieldListOut(list_id=f.list_id, name=f.name, geoids=f.geoids, created_at=f.created_at)
+    geoids = _fetch_geoids(request, list_id)
+    return FieldListOut(list_id=f.list_id, name=f.name, geoids=geoids, created_at=f.created_at)
 
 
 @router.get("/{list_id}/proof/{geoid}", response_model=InclusionProofOut)
 def inclusion_proof(
     list_id: str,
     geoid: str,
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     f = _owned(db, user, list_id)
+    geoids = _fetch_geoids(request, list_id)
     try:
-        proof = merkle.inclusion_proof(f.geoids, geoid)
+        proof = merkle.inclusion_proof(geoids, geoid)
     except ValueError:
         raise HTTPException(status_code=404, detail="geoid not in fieldlist") from None
     return InclusionProofOut(geoid=geoid, list_id=list_id, proof=proof)

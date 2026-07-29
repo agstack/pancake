@@ -52,24 +52,8 @@ class FieldList(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     owner: Mapped[User] = relationship(back_populates="fieldlists")
-    members: Mapped[list["FieldListMember"]] = relationship(
-        back_populates="fieldlist", cascade="all, delete-orphan"
-    )
-
-    @property
-    def geoids(self) -> list[str]:
-        return sorted(m.geoid for m in self.members)
-
-
-class FieldListMember(Base):
-    __tablename__ = "fieldlist_members"
-    __table_args__ = (UniqueConstraint("fieldlist_id", "geoid", name="uq_member"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    fieldlist_id: Mapped[int] = mapped_column(ForeignKey("fieldlists.id"), index=True)
-    geoid: Mapped[str] = mapped_column(String(128), index=True)
-
-    fieldlist: Mapped[FieldList] = relationship(back_populates="members")
+    
+    # members relationship removed (moved to AR2)
 
 
 class Grant(Base):

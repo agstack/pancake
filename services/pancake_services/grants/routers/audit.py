@@ -10,12 +10,14 @@ from sqlalchemy.orm import Session
 
 from pancake_services.grants.auth import get_current_user, get_db
 from pancake_services.grants.mealstore import MealStore
-from pancake_services.grants.models import FieldList, FieldListMember, Meal, MealPacket, User
+from pancake_services.grants.models import FieldList, Meal, MealPacket, User
+import httpx
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 
 
 def _packets_for_geoid(
+    request: Request,
     db: Session,
     geoid: str,
     since: Optional[datetime],
@@ -23,13 +25,18 @@ def _packets_for_geoid(
 ) -> list[MealPacket]:
     """Events indexed directly on the geoid, plus events on any fieldlist
     (ListID) that contains it."""
-    list_ids = set(
-        db.execute(
-            select(FieldList.list_id)
-            .join(FieldListMember, FieldListMember.fieldlist_id == FieldList.id)
-            .where(FieldListMember.geoid == geoid)
-        ).scalars()
-    )
+    ar2_url = request.app.state.settings.ar2_node_url
+    headers = {}
+    if "authorization" in request.headers:
+        headers["authorization"] = request.headers["authorization"]
+    list_ids = set()
+    try:
+        resp = httpx.get(f"{ar2_url}/list-artifact/reverse/{geoid}", headers=headers, timeout=10)
+        if resp.status_code == 200:
+            list_ids = set(resp.json().get("list_ids", []))
+    except httpx.HTTPError:
+        pass # If AR2 fails or 404s, just use the geoid
+
     keys = list(list_ids | {geoid})
     query = select(MealPacket).where(MealPacket.geoid.in_(keys))
     if since is not None:
@@ -55,12 +62,13 @@ def _packet_json(p: MealPacket) -> dict:
 @router.get("/{geoid}")
 def audit_events(
     geoid: str,
+    request: Request,
     since: Optional[datetime] = Query(default=None, alias="from"),
     until: Optional[datetime] = Query(default=None, alias="to"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    packets = _packets_for_geoid(db, geoid, since, until)
+    packets = _packets_for_geoid(request, db, geoid, since, until)
     return {"geoid": geoid, "event_count": len(packets), "events": [_packet_json(p) for p in packets]}
 
 
@@ -73,7 +81,7 @@ def audit_report(
 ):
     """Compliance report: full provenance plus chain-integrity verification
     for every MEAL touching this GeoID."""
-    packets = _packets_for_geoid(db, geoid, None, None)
+    packets = _packets_for_geoid(request, db, geoid, None, None)
     store = MealStore(request.app.state.issuer)
     meal_ids = sorted({p.meal_id for p in packets})
     chains = {meal_id: store.verify_chain(db, meal_id) for meal_id in meal_ids}

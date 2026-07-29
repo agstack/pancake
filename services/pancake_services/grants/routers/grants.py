@@ -101,7 +101,19 @@ def issue_grant(
         "odrl": _build_odrl(jti, body.list_id, body.purpose, exp),
         "status": {"status_list": {"uri": settings.status_list_uri, "idx": index}},
     }
-    credential = sdjwt.issue(claims, fieldlist.geoids, issuer.private_key_pem, issuer.kid)
+    # Fetch geoids from AR2 since they are no longer stored in Pancake
+    ar2_url = request.app.state.settings.ar2_node_url
+    headers = {}
+    if "authorization" in request.headers:
+        headers["authorization"] = request.headers["authorization"]
+    try:
+        resp = httpx.get(f"{ar2_url}/list-artifact/{body.list_id}", headers=headers, timeout=10)
+        resp.raise_for_status()
+        geoids = resp.json().get("members", [])
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch list artifact from AR2: {e}")
+
+    credential = sdjwt.issue(claims, geoids, issuer.private_key_pem, issuer.kid)
 
     grant = Grant(
         jti=jti,
