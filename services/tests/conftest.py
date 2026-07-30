@@ -142,3 +142,38 @@ def fieldlist(client, owner_headers, geoids):
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+from unittest.mock import patch
+import httpx
+from pancake_services.grants.merkle import merkle_root
+
+@pytest.fixture(autouse=True)
+def mock_ar2():
+    class MockResponse:
+        def __init__(self, json_data, status_code=200):
+            self._json_data = json_data
+            self.status_code = status_code
+
+        def json(self):
+            return self._json_data
+            
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise httpx.HTTPError("mock error")
+
+    def mock_post(url, *args, **kwargs):
+        if url.endswith("/list-artifact"):
+            json_payload = kwargs.get("json", {})
+            members = json_payload.get("members", [])
+            return MockResponse({"list_id": merkle_root(members), "message": "Success"})
+        return httpx.post(url, *args, **kwargs)
+
+    def mock_get(url, *args, **kwargs):
+        if "/list-artifact/reverse/" in url:
+            return MockResponse({"list_ids": [merkle_root(GEOIDS)]})
+        elif "/list-artifact/" in url:
+            return MockResponse({"members": GEOIDS})
+        return httpx.get(url, *args, **kwargs)
+
+    with patch("httpx.post", side_effect=mock_post), patch("httpx.get", side_effect=mock_get):
+        yield
