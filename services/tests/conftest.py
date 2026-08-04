@@ -3,9 +3,12 @@ import base64
 import sys
 import time
 from pathlib import Path
+from unittest.mock import patch
+import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # make pancake_services importable
 
+from pancake_services.grants.merkle import merkle_root
 import jwt as pyjwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -143,10 +146,6 @@ def fieldlist(client, owner_headers, geoids):
     assert response.status_code == 201, response.text
     return response.json()
 
-from unittest.mock import patch
-import httpx
-from pancake_services.grants.merkle import merkle_root
-
 @pytest.fixture(autouse=True)
 def mock_ar2():
     class MockResponse:
@@ -161,19 +160,25 @@ def mock_ar2():
             if self.status_code >= 400:
                 raise httpx.HTTPError("mock error")
 
+    original_post = httpx.post
+    original_get = httpx.get
+
     def mock_post(url, *args, **kwargs):
         if url.endswith("/list-artifact"):
             json_payload = kwargs.get("json", {})
             members = json_payload.get("members", [])
             return MockResponse({"list_id": merkle_root(members), "message": "Success"})
-        return httpx.post(url, *args, **kwargs)
+        return original_post(url, *args, **kwargs)
 
     def mock_get(url, *args, **kwargs):
         if "/list-artifact/reverse/" in url:
             return MockResponse({"list_ids": [merkle_root(GEOIDS)]})
         elif "/list-artifact/" in url:
             return MockResponse({"members": GEOIDS})
-        return httpx.get(url, *args, **kwargs)
+        return original_get(url, *args, **kwargs)
 
-    with patch("httpx.post", side_effect=mock_post), patch("httpx.get", side_effect=mock_get):
+    with patch("pancake_services.grants.routers.fieldlists.httpx.post", side_effect=mock_post), \
+         patch("pancake_services.grants.routers.fieldlists.httpx.get", side_effect=mock_get), \
+         patch("pancake_services.grants.routers.grants.httpx.get", side_effect=mock_get), \
+         patch("pancake_services.grants.routers.audit.httpx.get", side_effect=mock_get):
         yield

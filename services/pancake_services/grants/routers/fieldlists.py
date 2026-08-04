@@ -1,6 +1,7 @@
 """FieldList endpoints: owner-scoped GeoID lists identified by Merkle ListIDs."""
 from __future__ import annotations
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -40,8 +41,6 @@ def _fetch_geoids(request: Request, list_id: str) -> list[str]:
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch list artifact from AR2: {e}")
 
-
-import httpx
 
 @router.post("", response_model=FieldListOut, status_code=201)
 def create_fieldlist(
@@ -123,7 +122,7 @@ def inclusion_proof(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    f = _owned(db, user, list_id)
+    _owned(db, user, list_id)
     geoids = _fetch_geoids(request, list_id)
     try:
         proof = merkle.inclusion_proof(geoids, geoid)

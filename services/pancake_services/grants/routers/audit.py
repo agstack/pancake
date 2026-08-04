@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from pancake_services.grants.auth import get_current_user, get_db
 from pancake_services.grants.mealstore import MealStore
-from pancake_services.grants.models import FieldList, Meal, MealPacket, User
+from pancake_services.grants.models import Meal, MealPacket, User
 import httpx
 
 router = APIRouter(prefix="/audit", tags=["audit"])
