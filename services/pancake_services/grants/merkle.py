@@ -1,9 +1,9 @@
 """Merkle ListID construction per services/specs/MERKLE_LISTID.md.
 
-A FieldList's identifier (ListID) is the hex Merkle root over its member
-GeoIDs: leaves are SHA-256 of the UTF-8 GeoID strings in lexicographic
-order, parents are SHA-256(left || right), and an odd node is promoted
-unchanged to the next level.
+A List's identifier (ListID) is the hex Merkle root over its members
+(GeoIDs, nested RegionIDs prefixed with R:, or nested ListIDs prefixed with L:).
+Leaves are SHA-256 of the UTF-8 strings in lexicographic order.
+Parents are SHA-256(left || right), and an odd node is promoted unchanged.
 """
 from __future__ import annotations
 
@@ -15,11 +15,11 @@ def _sha256(data: bytes) -> bytes:
     return hashlib.sha256(data).digest()
 
 
-def canonical_members(geoids: List[str]) -> List[str]:
-    """Deduplicate and sort GeoIDs into canonical (lexicographic) order."""
-    if not geoids:
-        raise ValueError("a FieldList must contain at least one GeoID")
-    return sorted(set(geoids))
+def canonical_members(members: List[str]) -> List[str]:
+    """Deduplicate and sort members into canonical (lexicographic) order."""
+    if not members:
+        raise ValueError("a List must contain at least one member")
+    return sorted(set(members))
 
 
 def _levels(members: List[str]) -> List[List[bytes]]:
@@ -37,19 +37,19 @@ def _levels(members: List[str]) -> List[List[bytes]]:
     return levels
 
 
-def merkle_root(geoids: List[str]) -> str:
-    """Compute the ListID (lowercase hex Merkle root) for a set of GeoIDs."""
-    members = canonical_members(geoids)
-    return _levels(members)[-1][0].hex()
+def merkle_root(members: List[str]) -> str:
+    """Compute the ListID (lowercase hex Merkle root) for a set of members."""
+    canonical = canonical_members(members)
+    return _levels(canonical)[-1][0].hex()
 
 
-def inclusion_proof(geoids: List[str], geoid: str) -> List[Dict[str, str]]:
-    """Build an inclusion proof (list of {sibling, position} steps) for one GeoID."""
-    members = canonical_members(geoids)
-    if geoid not in members:
-        raise ValueError(f"GeoID not in list: {geoid}")
-    levels = _levels(members)
-    index = members.index(geoid)
+def inclusion_proof(members: List[str], member: str) -> List[Dict[str, str]]:
+    """Build an inclusion proof (list of {sibling, position} steps) for one member."""
+    canonical = canonical_members(members)
+    if member not in canonical:
+        raise ValueError(f"Member not in list: {member}")
+    levels = _levels(canonical)
+    index = canonical.index(member)
     proof: List[Dict[str, str]] = []
     for level in levels[:-1]:
         pair_start = index - (index % 2)
@@ -65,9 +65,9 @@ def inclusion_proof(geoids: List[str], geoid: str) -> List[Dict[str, str]]:
     return proof
 
 
-def verify_inclusion(geoid: str, proof: List[Dict[str, str]], list_id: str) -> bool:
+def verify_inclusion(member: str, proof: List[Dict[str, str]], list_id: str) -> bool:
     """Verify an inclusion proof against a ListID."""
-    node = _sha256(geoid.encode("utf-8"))
+    node = _sha256(member.encode("utf-8"))
     for step in proof:
         sibling = bytes.fromhex(step["sibling"])
         if step["position"] == "right":
