@@ -163,22 +163,52 @@ def mock_ar2():
     original_post = httpx.post
     original_get = httpx.get
 
+    registry: dict[str, list[str]] = {}
+
     def mock_post(url, *args, **kwargs):
         if url.endswith("/list-artifact"):
             json_payload = kwargs.get("json", {})
             members = json_payload.get("members", [])
-            return MockResponse({"list_id": merkle_root(members), "message": "Success"})
+            list_id = merkle_root(members)
+            registry[list_id] = sorted(set(members))
+            return MockResponse({"list_id": list_id, "message": "Success"})
+        elif "/traceforward" in url:
+            json_payload = kwargs.get("json", {})
+            geoid = json_payload.get("seed_geoid", "")
+                
+            found = set()
+            frontier = set()
+            
+            for list_id, members in registry.items():
+                if geoid in members:
+                    frontier.add(list_id)
+            
+            found.update(frontier)
+            while frontier:
+                parents = set()
+                for list_id, members in registry.items():
+                    for member in members:
+                        if member.startswith("L:") and member[2:] in frontier:
+                            parents.add(list_id)
+                frontier = parents - found
+                found.update(parents)
+                
+            return MockResponse({"seed_geoid": geoid, "list_ids": list(found)})
         return original_post(url, *args, **kwargs)
 
     def mock_get(url, *args, **kwargs):
         if "/list-artifact/reverse/" in url:
-            return MockResponse({"list_ids": [merkle_root(GEOIDS)]})
+            geoid = url.rstrip("/").rsplit("/", 1)[-1]
+            return MockResponse({"list_ids": [lid for lid, m in registry.items() if geoid in m]})
         elif "/list-artifact/" in url:
-            return MockResponse({"members": GEOIDS})
+            list_id = url.rstrip("/").rsplit("/", 1)[-1]
+            if list_id not in registry:
+                return MockResponse({"detail": "not found"}, status_code=404)
+            return MockResponse({"members": registry[list_id]})
         return original_get(url, *args, **kwargs)
 
     with patch("pancake_services.grants.routers.fieldlists.httpx.post", side_effect=mock_post), \
          patch("pancake_services.grants.routers.fieldlists.httpx.get", side_effect=mock_get), \
          patch("pancake_services.grants.routers.grants.httpx.get", side_effect=mock_get), \
-         patch("pancake_services.grants.routers.audit.httpx.get", side_effect=mock_get):
+         patch("pancake_services.grants.routers.audit.httpx.post", side_effect=mock_post):
         yield

@@ -31,7 +31,7 @@ def _packets_for_geoid(
         headers["authorization"] = request.headers["authorization"]
     list_ids = set()
     try:
-        resp = httpx.get(f"{ar2_url}/list-artifact/reverse/{geoid}", headers=headers, timeout=10)
+        resp = httpx.post(f"{ar2_url}/traceforward", json={"seed_geoid": geoid}, headers=headers, timeout=10)
         if resp.status_code == 200:
             list_ids = set(resp.json().get("list_ids", []))
     except httpx.HTTPError:

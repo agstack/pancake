@@ -103,7 +103,7 @@ def issue_grant(
     }
     # Fetch geoids from AR2 since they are no longer stored in Pancake
     ar2_url = request.app.state.settings.ar2_node_url
-    headers = {}
+    headers = {"x-pancake-internal": "true"}
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
     try:

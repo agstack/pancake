@@ -31,7 +31,7 @@ def _owned(db: Session, user: User, list_id: str) -> FieldList:
 
 def _fetch_geoids(request: Request, list_id: str) -> list[str]:
     ar2_url = request.app.state.settings.ar2_node_url
-    headers = {}
+    headers = {"x-pancake-internal": "true"}
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
     try:
