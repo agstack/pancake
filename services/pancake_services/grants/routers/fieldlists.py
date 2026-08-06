@@ -10,7 +10,7 @@ from pancake_services.grants import merkle
 from pancake_services.grants.auth import get_current_user, get_db
 from pancake_services.grants.mealstore import MealStore
 from pancake_services.grants.models import FieldList, User
-from pancake_services.grants.schemas import FieldListCreate, FieldListOut, InclusionProofOut
+from pancake_services.grants.schemas import FieldListCreate, FieldListOut, InclusionProofOut, HoldersRequest, HoldersResponse
 
 router = APIRouter(prefix="/fieldlists", tags=["fieldlists"])
 
@@ -31,7 +31,8 @@ def _owned(db: Session, user: User, list_id: str) -> FieldList:
 
 def _fetch_geoids(request: Request, list_id: str) -> list[str]:
     ar2_url = request.app.state.settings.ar2_node_url
-    headers = {"x-pancake-internal": "true"}
+    import os
+    headers = {"x-pancake-internal": os.getenv("AR2_INTERNAL_SHARED_SECRET", "true")}
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
     try:
@@ -103,6 +104,29 @@ def list_fieldlists(request: Request, user: User = Depends(get_current_user), db
         geoids = _fetch_geoids(request, f.list_id)
         result.append(FieldListOut(list_id=f.list_id, name=f.name, geoids=geoids, created_at=f.created_at))
     return result
+
+
+@router.post("/holders", response_model=HoldersResponse)
+def resolve_holders(
+    body: HoldersRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Tier 3 only: resolves list_ids to their holder accounts.
+    Returns only the holder account per requested ListID.
+    """
+    holders = {}
+    if body.list_ids:
+        rows = db.execute(
+            select(FieldList.list_id, User.hub_account_id)
+            .join(User, FieldList.owner_id == User.id)
+            .where(FieldList.list_id.in_(body.list_ids))
+        ).all()
+        for list_id, hub_account_id in rows:
+            holders[list_id] = hub_account_id
+            
+    return HoldersResponse(holders=holders)
 
 
 @router.get("/{list_id}", response_model=FieldListOut)

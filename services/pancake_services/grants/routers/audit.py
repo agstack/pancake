@@ -111,3 +111,53 @@ def verify_meal_chain(
     if meal is None:
         raise HTTPException(status_code=404, detail="meal not found")
     return MealStore(request.app.state.issuer).verify_chain(db, meal_id)
+
+from pydantic import BaseModel
+import hmac
+import os
+
+class AuditEventRequest(BaseModel):
+    event: str
+    who: str
+    credential_id: str
+    seed_geoid: str
+    scope: Optional[str] = None
+    match_count: Optional[int] = None
+    artifact: Optional[str] = None
+
+@router.post("/events")
+def append_audit_event(
+    body: AuditEventRequest,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Internal endpoint for AR2 to append traceforward/traceback MEAL events."""
+    internal_token = request.headers.get("X-Pancake-Internal")
+    expected = os.getenv("AR2_INTERNAL_SHARED_SECRET")
+    if not expected or not internal_token or not hmac.compare_digest(internal_token, expected):
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    store = MealStore(request.app.state.issuer)
+    # the meal_key should be the seed_geoid or the artifact id
+    meal_key = body.seed_geoid if body.seed_geoid else body.artifact
+    if not meal_key:
+        raise HTTPException(status_code=400, detail="meal_key required")
+        
+    payload = {
+        "credential_id": body.credential_id,
+        "scope": body.scope,
+        "match_count": body.match_count,
+        "artifact": body.artifact
+    }
+    
+    store.append_event(
+        db,
+        meal_key=meal_key,
+        event_type=body.event,
+        author_account=body.who,
+        payload=payload,
+        geoid=meal_key,
+        meal_type="recall_audit"
+    )
+    db.commit()
+    return {"status": "ok"}

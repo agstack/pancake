@@ -58,3 +58,9 @@ class StatusListOut(BaseModel):
     uri: str
     encoded: str
     size: int
+
+class HoldersRequest(BaseModel):
+    list_ids: List[str]
+
+class HoldersResponse(BaseModel):
+    holders: dict[str, str]
