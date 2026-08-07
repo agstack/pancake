@@ -61,6 +61,8 @@ class StatusListOut(BaseModel):
 
 class HoldersRequest(BaseModel):
     list_ids: List[str]
+    scope: str
+    seed_geoid: str
 
 class HoldersResponse(BaseModel):
     holders: dict[str, str]

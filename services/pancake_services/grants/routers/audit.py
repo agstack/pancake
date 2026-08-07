@@ -11,10 +11,12 @@ from sqlalchemy.orm import Session
 from pancake_services.grants.auth import get_current_user, get_db
 from pancake_services.grants.mealstore import MealStore
 from pancake_services.grants.models import Meal, MealPacket, User
-import httpx
+
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 
+
+import httpx
 
 def _packets_for_geoid(
     request: Request,
@@ -29,11 +31,17 @@ def _packets_for_geoid(
     headers = {}
     if "authorization" in request.headers:
         headers["authorization"] = request.headers["authorization"]
+    if "x-authority-token" in request.headers:
+        headers["x-authority-token"] = request.headers["x-authority-token"]
+    if "x-pancake-signature" in request.headers:
+        headers["x-pancake-signature"] = request.headers["x-pancake-signature"]
+        
     list_ids = set()
     try:
         resp = httpx.post(f"{ar2_url}/traceforward", json={"seed_geoid": geoid}, headers=headers, timeout=10)
         if resp.status_code == 200:
-            list_ids = set(resp.json().get("list_ids", []))
+            for match in resp.json().get("matches", []):
+                list_ids.add(match["list_id"])
     except httpx.HTTPError:
         pass # If AR2 fails or 404s, just use the geoid
 

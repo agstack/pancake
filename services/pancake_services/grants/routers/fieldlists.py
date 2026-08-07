@@ -109,13 +109,38 @@ def list_fieldlists(request: Request, user: User = Depends(get_current_user), db
 @router.post("/holders", response_model=HoldersResponse)
 def resolve_holders(
     body: HoldersRequest,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    request: Request,
+    db: Session = Depends(get_db),
 ):
-    """
-    Tier 3 only: resolves list_ids to their holder accounts.
-    Returns only the holder account per requested ListID.
-    """
+    """Tier 3 identity disclosure. Requires BOTH the AR2 internal secret AND a
+    valid, in-scope authority credential. Every disclosure is written to MEAL
+    in the same transaction as the lookup."""
+    import os
+    import hmac
+    
+    # (a) transport: only AR2 may call this at all
+    secret = os.getenv("AR2_INTERNAL_SHARED_SECRET")
+    presented = request.headers.get("X-Pancake-Internal")
+    if not secret or not presented or not hmac.compare_digest(presented.encode(), secret.encode()):
+        raise HTTPException(status_code=403, detail="not authorized")
+
+    # (b) authorization: verify the credential ourselves - never on AR2's word
+    from pancake_services.grants.auth import verify_authority_credential, VerificationError
+    from pancake_services.grants.issuer import authority_pubkey
+    
+    authority_token = request.headers.get("X-Authority-Token")
+    if not authority_token:
+        raise HTTPException(status_code=403, detail="authority credential required")
+    try:
+        claims = verify_authority_credential(
+            authority_token,
+            authority_pubkey(),                 # Pancake's own trust anchor
+            requested_scope=body.scope,
+        )
+    except VerificationError as e:
+        raise HTTPException(status_code=403, detail=f"authority credential invalid: {e}") from None
+
+    # (c) the lookup
     holders = {}
     if body.list_ids:
         rows = db.execute(
@@ -123,9 +148,25 @@ def resolve_holders(
             .join(User, FieldList.owner_id == User.id)
             .where(FieldList.list_id.in_(body.list_ids))
         ).all()
-        for list_id, hub_account_id in rows:
-            holders[list_id] = hub_account_id
-            
+        holders = {list_id: acct for list_id, acct in rows}
+
+    # (d) the disclosure is on the record, in the same transaction as the read
+    from pancake_services.grants.mealstore import MealStore
+    MealStore(request.app.state.issuer).append_event(
+        db,
+        meal_key=body.seed_geoid,
+        event_type="traceforward.disclosure",
+        author_account=claims.get("sub"),
+        payload={
+            "credential_id": claims.get("jti"),
+            "scope": body.scope,
+            "disclosed_count": len(holders),
+            "requested_count": len(body.list_ids),
+        },
+        geoid=body.seed_geoid,
+        meal_type="recall_audit",
+    )
+    db.commit()
     return HoldersResponse(holders=holders)
 
 

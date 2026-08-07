@@ -52,7 +52,11 @@ def fake_ar2_node():
                 frontier = parents - found
                 found.update(parents)
                 
-            return MockResponse({"seed_geoid": geoid, "list_ids": list(found)})
+            return MockResponse({
+                "seed_geoid": geoid,
+                "tier": 1,
+                "matches": [{"list_id": lid, "region_id": None} for lid in found]
+            })
         return original_post(url, *args, **kwargs)
 
     def mock_get(url, *args, **kwargs):
@@ -67,7 +71,7 @@ def fake_ar2_node():
         return original_get(url, *args, **kwargs)
 
     with patch("pancake_services.grants.routers.fieldlists.httpx.post", side_effect=mock_post), \
+         patch("pancake_services.grants.routers.audit.httpx.post", side_effect=mock_post), \
          patch("pancake_services.grants.routers.fieldlists.httpx.get", side_effect=mock_get), \
-         patch("pancake_services.grants.routers.grants.httpx.get", side_effect=mock_get), \
-         patch("pancake_services.grants.routers.audit.httpx.post", side_effect=mock_post):
+         patch("pancake_services.grants.routers.grants.httpx.get", side_effect=mock_get):
         yield

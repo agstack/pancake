@@ -88,3 +88,14 @@ def load_issuer_identity() -> IssuerIdentity:
         private_key_pem=private_pem,
         public_key_pem=public_pem,
     )
+
+import functools
+
+@functools.lru_cache()
+def authority_pubkey() -> bytes:
+    """Pancake's own trust anchor for verifying authority credentials."""
+    key_path = os.getenv("PANCAKE_TRUSTED_AUTHORITY_PUBKEY")
+    if not key_path or not os.path.exists(key_path):
+        raise RuntimeError("PANCAKE_TRUSTED_AUTHORITY_PUBKEY not set or file not found")
+    with open(key_path, "rb") as f:
+        return f.read()

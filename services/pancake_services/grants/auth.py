@@ -92,3 +92,20 @@ def get_current_user(
         db.commit()
         db.refresh(user)
     return user
+
+class VerificationError(Exception):
+    pass
+
+def verify_authority_credential(token: str, public_key_pem: bytes, requested_scope: str = None) -> dict:
+    from pancake_services.grants import sdjwt
+    try:
+        # Authority credentials use a different VCT
+        result = sdjwt.verify(token, public_key_pem, expected_vct="agstack.org/credentials/traceforward-authority/v1")
+    except sdjwt.VerificationError as e:
+        raise VerificationError(str(e)) from e
+        
+    claims = result.claims
+    if requested_scope and claims.get("scope") not in (requested_scope, "global"):
+        raise VerificationError(f"insufficient scope: requested {requested_scope}, got {claims.get('scope')}")
+        
+    return claims
