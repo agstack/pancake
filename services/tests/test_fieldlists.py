@@ -78,7 +78,7 @@ def test_resolve_holders_matrix(client, owner_headers, buyer_headers, fieldlist,
             "sub": "auth-subject",
             "iat": int(time.time()),
             "exp": int(time.time()) + exp_offset,
-            "vct": "agstack.org/credentials/authority/v1",
+            "vct": "agstack.org/credentials/traceforward-authority/v1",
             "scope": scope,
             "status": {"status_list": {"uri": "local", "idx": 1}},
         }

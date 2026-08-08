@@ -1,8 +1,13 @@
 """OpenScience Auditing API: per-GeoID provenance from the signed MEAL ledger."""
 from __future__ import annotations
 
+import hmac
+import httpx
+import os
 from datetime import datetime, timezone
 from typing import Optional
+
+from pydantic import BaseModel
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
@@ -16,7 +21,6 @@ from pancake_services.grants.models import Meal, MealPacket, User
 router = APIRouter(prefix="/audit", tags=["audit"])
 
 
-import httpx
 
 def _packets_for_geoid(
     request: Request,
@@ -120,9 +124,6 @@ def verify_meal_chain(
         raise HTTPException(status_code=404, detail="meal not found")
     return MealStore(request.app.state.issuer).verify_chain(db, meal_id)
 
-from pydantic import BaseModel
-import hmac
-import os
 
 class AuditEventRequest(BaseModel):
     event: str

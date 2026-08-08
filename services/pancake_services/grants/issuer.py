@@ -8,6 +8,7 @@ The key is never logged and never serialized into any response.
 from __future__ import annotations
 
 import base64
+import functools
 import os
 from dataclasses import dataclass
 
@@ -89,7 +90,6 @@ def load_issuer_identity() -> IssuerIdentity:
         public_key_pem=public_pem,
     )
 
-import functools
 
 @functools.lru_cache()
 def authority_pubkey() -> bytes:
