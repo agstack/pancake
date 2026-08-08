@@ -4,11 +4,10 @@ import sys
 import time
 from pathlib import Path
 from unittest.mock import patch
-import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # make pancake_services importable
 
-from pancake_services.grants.merkle import merkle_root
+
 import jwt as pyjwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -17,6 +16,7 @@ from fastapi.testclient import TestClient
 from pancake_services.common.config import Settings
 from pancake_services.grants.app import create_app
 from pancake_services.grants.issuer import IssuerIdentity, generate_keypair_pem
+from pancake_services.grants.testkit.fake_ar2 import fake_ar2_node
 
 
 def _b64url_uint(n: int) -> str:
@@ -145,8 +145,6 @@ def fieldlist(client, owner_headers, geoids):
     )
     assert response.status_code == 201, response.text
     return response.json()
-
-from pancake_services.grants.testkit.fake_ar2 import fake_ar2_node
 
 @pytest.fixture(autouse=True)
 def mock_ar2():
