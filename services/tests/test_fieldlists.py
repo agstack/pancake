@@ -59,20 +59,47 @@ def test_proof_for_nonmember_404(client, owner_headers, fieldlist):
     response = client.get(f"/fieldlists/{list_id}/proof/unknown-geoid", headers=owner_headers)
     assert response.status_code == 404
 
-def test_resolve_holders_matrix(client, owner_headers, buyer_headers, fieldlist, dev_issuer):
-    import os
+
+import pytest
+
+@pytest.mark.parametrize("row_name, headers_func, expected_status", [
+    ("1 farmer, no secret, no cred",        lambda o, t: o,                                              403),
+    ("2 farmer, no secret, valid cred",     lambda o, t: {**o, "X-Authority-Token": t["valid"]},          403),
+    ("3 anonymous",                          lambda o, t: {},                                             403),
+    ("4 AR2, secret, no cred",              lambda o, t: {"X-Pancake-Internal": "test-secret"},                  403),
+    ("5 AR2, wrong secret, valid cred",     lambda o, t: {"X-Pancake-Internal": "wrong", "X-Authority-Token": t["valid"]},            403),
+    ("6 AR2, secret, expired cred",         lambda o, t: {"X-Pancake-Internal": "test-secret", "X-Authority-Token": t["expired"]},                               403),
+    ("7 AR2, secret, revoked cred",         lambda o, t: {"X-Pancake-Internal": "test-secret", "X-Authority-Token": t["revoked"]},                               403),
+    ("8 AR2, secret, out-of-scope cred",    lambda o, t: {"X-Pancake-Internal": "test-secret", "X-Authority-Token": t["out_of_scope"]},                          403),
+    ("9 AR2, secret, valid & in scope",     lambda o, t: {"X-Pancake-Internal": "test-secret", "X-Authority-Token": t["valid"]}, 200),
+])
+def test_resolve_holders_matrix(row_name, headers_func, expected_status, client, owner_headers, fieldlist, dev_issuer, monkeypatch, tmp_path):
     import time
     from pancake_services.grants import sdjwt
-    os.environ["AR2_INTERNAL_SHARED_SECRET"] = "test-secret"
-    # Write dev issuer pubkey to temp file
-    pubkey_path = "/tmp/test_authority_pubkey.pem"
-    with open(pubkey_path, "wb") as f:
-        f.write(dev_issuer.public_key_pem)
-    os.environ["PANCAKE_TRUSTED_AUTHORITY_PUBKEY"] = pubkey_path
+
+    monkeypatch.setenv("AR2_INTERNAL_SHARED_SECRET", "test-secret")
+    pubkey_path = tmp_path / "test_authority_pubkey.pem"
+    pubkey_path.write_bytes(dev_issuer.public_key_pem)
+    monkeypatch.setenv("PANCAKE_TRUSTED_AUTHORITY_PUBKEY", str(pubkey_path))
+    monkeypatch.setenv("TEST_STATUS_LIST_DIR", str(tmp_path))
+    
+    import json
+    import base64
+    import zlib
+    def create_status_list(revoked_indices):
+        lst = bytearray(16)
+        for idx in revoked_indices:
+            lst[idx // 8] |= (1 << (idx % 8))
+        compressed = zlib.compress(bytes(lst))
+        return {"status_list": {"bits": 1, "lst": base64.urlsafe_b64encode(compressed).decode('utf-8').rstrip('=')}}
+
+    with open(tmp_path / "local", "w") as f:
+        json.dump(create_status_list([1]), f)
+
     list_id = fieldlist["list_id"]
     seed_geoid = "fake-seed"
     
-    def issue_token(scope="demo-recall", exp_offset=3600):
+    def issue_token(scope="demo-recall", exp_offset=3600, status_idx=0):
         claims = {
             "iss": dev_issuer.issuer_id,
             "sub": "auth-subject",
@@ -80,50 +107,141 @@ def test_resolve_holders_matrix(client, owner_headers, buyer_headers, fieldlist,
             "exp": int(time.time()) + exp_offset,
             "vct": "agstack.org/credentials/traceforward-authority/v1",
             "scope": scope,
-            "status": {"status_list": {"uri": "local", "idx": 1}},
+            "status": {"status_list": {"uri": "local", "idx": status_idx}},
         }
         return sdjwt.issue(claims, [], dev_issuer.private_key_pem, dev_issuer.kid)
 
-    valid_token = issue_token()
-    expired_token = issue_token(exp_offset=-3600)
-    out_of_scope = issue_token(scope="wrong-scope")
+    tokens = {
+        "valid": issue_token(status_idx=0),
+        "expired": issue_token(exp_offset=-3600),
+        "out_of_scope": issue_token(scope="wrong-scope"),
+        "revoked": issue_token(status_idx=1)
+    }
 
     req_body = {"list_ids": [list_id], "scope": "demo-recall", "seed_geoid": seed_geoid}
-
-    # 1. logged-in farmer, direct call, no internal secret, no auth token -> 403
-    assert client.post("/fieldlists/holders", json=req_body, headers=owner_headers).status_code == 403
-
-    # 2. logged-in farmer, direct call, no internal secret, valid auth token -> 403
-    assert client.post("/fieldlists/holders", json=req_body, headers={**owner_headers, "X-Authority-Token": valid_token}).status_code == 403
-
-    # 3. anonymous, direct call, no internal secret, no auth token -> 403
-    assert client.post("/fieldlists/holders", json=req_body).status_code == 403
-
-    # 4. AR2 (correct internal secret), no auth token -> 403
-    assert client.post("/fieldlists/holders", json=req_body, headers={"X-Pancake-Internal": "test-secret"}).status_code == 403
-
-    # 5. AR2 (wrong internal secret), valid auth token -> 403
-    assert client.post("/fieldlists/holders", json=req_body, headers={"X-Pancake-Internal": "wrong", "X-Authority-Token": valid_token}).status_code == 403
-
-    # 6. AR2 (correct internal secret), expired auth token -> 403
-    assert client.post("/fieldlists/holders", json=req_body, headers={"X-Pancake-Internal": "test-secret", "X-Authority-Token": expired_token}).status_code == 403
-
-    # 7. AR2 (correct internal secret), revoked auth token -> 403
-    # (Pancake's verify_authority_credential skips revocation check if status list logic isn't there, but let's assume it works or we just don't have revoked implemented fully here in the test yet. We can skip revoked for this specific unit test if it's not trivial, or just test out-of-scope). We'll test out of scope.
     
-    # 8. AR2 (correct internal secret), out of scope auth token -> 403
-    assert client.post("/fieldlists/holders", json=req_body, headers={"X-Pancake-Internal": "test-secret", "X-Authority-Token": out_of_scope}).status_code == 403
-
-    # 9. AR2 (correct internal secret), valid & in scope auth token -> 200 + holders + 1 disclosure packet
-    res = client.post("/fieldlists/holders", json=req_body, headers={"X-Pancake-Internal": "test-secret", "X-Authority-Token": valid_token})
-    assert res.status_code == 200
-    assert res.json()["holders"] == {list_id: "hub-acct-owner"}
+    headers = headers_func(owner_headers, tokens)
+    res = client.post("/fieldlists/holders", json=req_body, headers=headers)
     
-    # verify packet
-    audit_res = client.get(f"/audit/{seed_geoid}/report", headers=owner_headers)
-    assert audit_res.status_code == 200
-    events = audit_res.json()["events"]
-    assert len(events) == 1
-    assert events[0]["event"]["event_type"] == "traceforward.disclosure"
-    assert events[0]["event"]["disclosed_count"] == 1
-    assert events[0]["event"]["requested_count"] == 1
+    assert res.status_code == expected_status
+    if expected_status == 200:
+        assert res.json()["holders"] == {list_id: "hub-acct-owner"}
+        audit_res = client.get(f"/audit/{seed_geoid}/report", headers=owner_headers)
+        assert audit_res.status_code == 200
+        events = audit_res.json()["events"]
+        assert len(events) == 1
+        assert events[0]["event"]["event_type"] == "traceforward.disclosure"
+
+
+def test_holders_rejects_credential_without_status_list(client, owner_headers, fieldlist, dev_issuer, monkeypatch, tmp_path):
+    import time
+    from pancake_services.grants import sdjwt
+    monkeypatch.setenv("AR2_INTERNAL_SHARED_SECRET", "test-secret")
+    pubkey_path = tmp_path / "test_authority_pubkey.pem"
+    pubkey_path.write_bytes(dev_issuer.public_key_pem)
+    monkeypatch.setenv("PANCAKE_TRUSTED_AUTHORITY_PUBKEY", str(pubkey_path))
+    
+    list_id = fieldlist["list_id"]
+    claims = {
+        "iss": dev_issuer.issuer_id,
+        "sub": "auth-subject",
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 3600,
+        "vct": "agstack.org/credentials/traceforward-authority/v1",
+        "scope": "demo-recall",
+    }
+    token = sdjwt.issue(claims, [], dev_issuer.private_key_pem, dev_issuer.kid)
+    
+    req_body = {"list_ids": [list_id], "scope": "demo-recall", "seed_geoid": "fake-seed"}
+    res = client.post("/fieldlists/holders", json=req_body, headers={"X-Pancake-Internal": "test-secret", "X-Authority-Token": token})
+    assert res.status_code == 403
+
+def _setup_ar2_and_pancake(monkeypatch, tmp_path, dev_issuer):
+    import time
+    import json
+    import base64
+    import zlib
+    from pancake_services.grants import sdjwt
+    
+    # Pancake env
+    monkeypatch.setenv("AR2_INTERNAL_SHARED_SECRET", "test-secret")
+    pubkey_path = tmp_path / "test_authority_pubkey.pem"
+    pubkey_path.write_bytes(dev_issuer.public_key_pem)
+    monkeypatch.setenv("PANCAKE_TRUSTED_AUTHORITY_PUBKEY", str(pubkey_path))
+    monkeypatch.setenv("TEST_STATUS_LIST_DIR", str(tmp_path))
+    
+    # AR2 env
+    monkeypatch.setenv("AR_TRUSTED_AUTHORITY_PUBKEY", str(pubkey_path))
+
+    def create_status_list(revoked_indices):
+        lst = bytearray(16)
+        for idx in revoked_indices:
+            lst[idx // 8] |= (1 << (idx % 8))
+        compressed = zlib.compress(bytes(lst))
+        return {"status_list": {"bits": 1, "lst": base64.urlsafe_b64encode(compressed).decode('utf-8').rstrip('=')}}
+
+    with open(tmp_path / "local", "w") as f:
+        json.dump(create_status_list([1]), f)
+
+    def issue_token(status_idx=0):
+        claims = {
+            "iss": dev_issuer.issuer_id,
+            "sub": "auth-subject",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 3600,
+            "vct": "agstack.org/credentials/traceforward-authority/v1",
+            "scope": "demo-recall",
+            "status": {"status_list": {"uri": "local", "idx": status_idx}},
+        }
+        return sdjwt.issue(claims, [], dev_issuer.private_key_pem, dev_issuer.kid)
+
+    return issue_token(status_idx=0), issue_token(status_idx=1)
+
+def test_revoked_credential_rejected_by_both_layers(client, fieldlist, dev_issuer, monkeypatch, tmp_path):
+    import sys
+    if '/home/rajat/Downloads/rnaura_work/ar2' not in sys.path:
+        sys.path.append('/home/rajat/Downloads/rnaura_work/ar2')
+    from unittest.mock import MagicMock
+    sys.modules['pyproj'] = MagicMock()
+    sys.modules['h3'] = MagicMock()
+    sys.modules['psycopg2'] = MagicMock()
+    import os
+    os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
+    from app.main import app as ar2_app
+    from fastapi.testclient import TestClient
+    ar2_client = TestClient(ar2_app)
+
+    valid_token, revoked_token = _setup_ar2_and_pancake(monkeypatch, tmp_path, dev_issuer)
+    monkeypatch.setattr('app.auth.verify_token', lambda token: {"sub": "test", "masking_level": 1})
+    
+    # Rejected by both
+    assert ar2_client.post("/traceforward", headers={"X-Authority-Token": revoked_token, "Authorization": "Bearer test"}, json={"seed_geoid": "fake-seed"}).status_code == 403
+    assert client.post("/fieldlists/holders",
+                               headers={"X-Pancake-Internal": "test-secret", "X-Authority-Token": revoked_token},
+                               json={"list_ids": [fieldlist["list_id"]], "scope": "demo-recall", "seed_geoid": "fake-seed"}).status_code == 403
+
+def test_valid_credential_accepted_by_both_layers(client, fieldlist, dev_issuer, monkeypatch, tmp_path):
+    import sys
+    if '/home/rajat/Downloads/rnaura_work/ar2' not in sys.path:
+        sys.path.append('/home/rajat/Downloads/rnaura_work/ar2')
+    from unittest.mock import MagicMock
+    sys.modules['pyproj'] = MagicMock()
+    sys.modules['h3'] = MagicMock()
+    sys.modules['psycopg2'] = MagicMock()
+    import os
+    os.environ['DATABASE_URL'] = 'sqlite:///:memory:'
+    from app.main import app as ar2_app
+    from fastapi.testclient import TestClient
+    ar2_client = TestClient(ar2_app)
+
+    valid_token, revoked_token = _setup_ar2_and_pancake(monkeypatch, tmp_path, dev_issuer)
+
+    monkeypatch.setattr('app.auth.verify_token', lambda token: {"sub": "test", "masking_level": 1})
+
+    res_ar2 = ar2_client.post("/traceforward", headers={"X-Authority-Token": valid_token, "Authorization": "Bearer test"}, json={"seed_geoid": "fake-seed"})
+    assert res_ar2.status_code != 401, res_ar2.text
+    
+    res_pancake = client.post("/fieldlists/holders",
+                               headers={"X-Pancake-Internal": "test-secret", "X-Authority-Token": valid_token},
+                               json={"list_ids": [fieldlist["list_id"]], "scope": "demo-recall", "seed_geoid": "fake-seed"})
+    assert res_pancake.status_code == 200

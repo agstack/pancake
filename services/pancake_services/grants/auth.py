@@ -96,8 +96,13 @@ def get_current_user(
 class VerificationError(Exception):
     pass
 
-def verify_authority_credential(token: str, public_key_pem: bytes, requested_scope: str = None) -> dict:
-    from pancake_services.grants import sdjwt
+def verify_authority_credential(
+    token: str,
+    public_key_pem: bytes,
+    requested_scope: str = None,
+    local_status_list_path: str = None,
+) -> dict:
+    from pancake_services.grants import sdjwt, statuslist
     try:
         # Authority credentials use a different VCT
         result = sdjwt.verify(token, public_key_pem, expected_vct="agstack.org/credentials/traceforward-authority/v1")
@@ -105,6 +110,13 @@ def verify_authority_credential(token: str, public_key_pem: bytes, requested_sco
         raise VerificationError(str(e)) from e
         
     claims = result.claims
+
+    status = (claims.get("status") or {}).get("status_list")
+    if not status:
+        raise VerificationError("authority credential has no status list")
+    if statuslist.is_revoked(status, local_path=local_status_list_path):
+        raise VerificationError("authority credential revoked")
+
     if requested_scope and claims.get("scope") not in (requested_scope, "global"):
         raise VerificationError(f"insufficient scope: requested {requested_scope}, got {claims.get('scope')}")
         

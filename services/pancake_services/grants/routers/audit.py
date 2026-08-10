@@ -42,14 +42,28 @@ def _packets_for_geoid(
         
     list_ids = set()
     try:
-        resp = httpx.post(f"{ar2_url}/traceforward", json={"seed_geoid": geoid}, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            for match in resp.json().get("matches", []):
-                list_ids.add(match["list_id"])
+        from pancake_services.grants.models import FieldList, FieldListMember
+        local_lists = set(
+            db.execute(
+                select(FieldList.list_id)
+                .join(FieldListMember, FieldListMember.fieldlist_id == FieldList.id)
+                .where(FieldListMember.geoid == geoid)
+            ).scalars()
+        )
+        list_ids.update(local_lists)
+    except Exception:
+        pass
+
+    try:
+        if ar2_url:
+            resp = httpx.get(f"{ar2_url}/list-artifact/reverse/{geoid}", headers=headers, timeout=10)
+            if resp.status_code == 200:
+                list_ids.update(resp.json().get("list_ids", []))
     except httpx.HTTPError:
         pass # If AR2 fails or 404s, just use the geoid
 
     keys = list(list_ids | {geoid})
+    print(f"DEBUG keys: {keys}")
     query = select(MealPacket).where(MealPacket.geoid.in_(keys))
     if since is not None:
         query = query.where(MealPacket.time_index >= since)
@@ -133,6 +147,7 @@ class AuditEventRequest(BaseModel):
     scope: Optional[str] = None
     match_count: Optional[int] = None
     artifact: Optional[str] = None
+    list_ids: Optional[list[str]] = None
 
 @router.post("/events")
 def append_audit_event(
@@ -159,6 +174,7 @@ def append_audit_event(
         "artifact": body.artifact
     }
     
+    # Log to the seed geoid or artifact id
     store.append_event(
         db,
         meal_key=meal_key,
@@ -168,5 +184,19 @@ def append_audit_event(
         geoid=meal_key,
         meal_type="recall_audit"
     )
+    
+    # Log to all affected list IDs
+    if body.list_ids:
+        for list_id in body.list_ids:
+            store.append_event(
+                db,
+                meal_key=list_id,
+                event_type=body.event,
+                author_account=body.who,
+                payload=payload,
+                geoid=meal_key,
+                meal_type="recall_audit"
+            )
+            
     db.commit()
     return {"status": "ok"}

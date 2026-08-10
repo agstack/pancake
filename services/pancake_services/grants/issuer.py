@@ -70,8 +70,8 @@ def load_issuer_identity() -> IssuerIdentity:
     raw = os.environ.get(ENV_KEY)
     if not raw:
         raise RuntimeError(
-            f"{ENV_KEY} is not set. Generate one with: "
-            "python -m pancake_services.grants.testkit.mint_test_credentials --keygen"
+            f"{ENV_KEY} is not set. For local testing, use the testkit key:\n"
+            "export PANCAKE_ISSUER_KEY=$(cat services/pancake_services/grants/testkit/dev_keys/dev_issuer_private.pem)"
         )
     key = _load_private_key(raw)
     private_pem = key.private_bytes(

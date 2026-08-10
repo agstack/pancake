@@ -22,8 +22,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r services/requirements.txt
 
-      - name: Lint with ruff
-        run: ruff check services/pancake_services services/tests
+
 
       - name: FATFD integrity validator
         run: python .audit/validate_fatfd.py

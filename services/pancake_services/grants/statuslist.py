@@ -54,3 +54,40 @@ class StatusList:
         sl = cls(size=len(raw) * 8)
         sl._bits = bytearray(raw)
         return sl
+
+def is_revoked(status: dict, local_path: str = None) -> bool:
+    import os
+    import json
+    import urllib.request
+    
+    uri = status.get("uri")
+    idx = status.get("idx")
+    if uri is None or idx is None:
+        raise ValueError("status missing uri or idx")
+        
+    status_list_data = None
+    if local_path:
+        filepath = os.path.join(local_path, "status_list.txt")
+        if not os.path.exists(filepath):
+            filename = uri.rstrip('/').split('/')[-1]
+            filepath = os.path.join(local_path, filename)
+        with open(filepath, "rb") as f:
+            status_list_data = f.read()
+    else:
+        req = urllib.request.Request(uri, headers={'Accept': 'application/statuslist+jwt'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            status_list_data = response.read()
+            
+    # Try parsing as JSON first
+    encoded = None
+    try:
+        sl_json = json.loads(status_list_data)
+        encoded = sl_json.get("encoded") or sl_json.get("status_list", {}).get("lst")
+    except:
+        pass
+        
+    if not encoded:
+        encoded = status_list_data.decode('utf-8').strip()
+        
+    sl = StatusList.decode(encoded)
+    return sl.is_revoked(idx)

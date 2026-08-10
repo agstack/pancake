@@ -1,7 +1,7 @@
 """Mint the five test credentials verifier developers need.
 
 Usage:
-    python -m pancake_services.grants.testkit.mint_test_credentials [--keygen] [--out DIR]
+    python -m pancake_services.grants.testkit.mint_test_credentials [--out DIR]
 
 Generates (into --out, default services/pancake_services/grants/testkit/dev_keys/):
     dev_issuer_private.pem   Ed25519 dev signing key (gitignored, generated fresh)
@@ -156,14 +156,7 @@ def mint_all(out_dir: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default=str(Path(__file__).parent / "dev_keys"))
-    parser.add_argument("--keygen", action="store_true",
-                        help="only print a fresh base64url Ed25519 seed for PANCAKE_ISSUER_KEY")
     args = parser.parse_args()
-
-    if args.keygen:
-        import secrets
-        print(_b64url(secrets.token_bytes(32)))
-        return
 
     manifest = mint_all(Path(args.out))
     print(f"Minted {len(manifest['credentials'])} test credentials into {args.out}")

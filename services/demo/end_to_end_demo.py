@@ -38,7 +38,9 @@ def main() -> int:
     print("Pancake DPI end-to-end demo")
 
     hub = FakeHub()
-    priv, pub = generate_keypair_pem()
+    testkit_dir = Path(__file__).resolve().parents[1] / "pancake_services" / "grants" / "testkit" / "dev_keys"
+    priv = (testkit_dir / "dev_issuer_private.pem").read_bytes()
+    pub = (testkit_dir / "dev_issuer_public.pem").read_bytes()
     issuer = IssuerIdentity(
         issuer_id="did:web:pancake.demo", kid="demo-1",
         private_key_pem=priv, public_key_pem=pub,

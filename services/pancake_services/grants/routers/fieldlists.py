@@ -136,6 +136,7 @@ def resolve_holders(
             authority_token,
             authority_pubkey(),                 # Pancake's own trust anchor
             requested_scope=body.scope,
+            local_status_list_path=os.getenv("TEST_STATUS_LIST_DIR"),
         )
     except VerificationError as e:
         raise HTTPException(status_code=403, detail=f"authority credential invalid: {e}") from None
