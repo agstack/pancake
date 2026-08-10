@@ -44,10 +44,10 @@ jobs:
       - name: Services test suite
         run: python -m pytest services/tests -q --cov=services/pancake_services --cov-report=term
 
+      - name: Test-issuer kit smoke
+        working-directory: services
+        run: python -m pancake_services.grants.testkit.mint_test_credentials
+
       - name: End-to-end demo
         working-directory: services
         run: python demo/end_to_end_demo.py
-
-      - name: Test-issuer kit smoke
-        working-directory: services
-        run: python -m pancake_services.grants.testkit.mint_test_credentials --out /tmp/dev_keys
