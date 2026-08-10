@@ -199,8 +199,19 @@ def _setup_ar2_and_pancake(monkeypatch, tmp_path, dev_issuer):
 
 def test_revoked_credential_rejected_by_both_layers(client, fieldlist, dev_issuer, monkeypatch, tmp_path):
     import sys
-    if '/home/rajat/Downloads/rnaura_work/ar2' not in sys.path:
-        sys.path.append('/home/rajat/Downloads/rnaura_work/ar2')
+    import os
+    import pytest
+    
+    ar2_paths = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../ar2')),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '../../ar2'))
+    ]
+    ar2_path = next((p for p in ar2_paths if os.path.exists(p)), None)
+    
+    if not ar2_path:
+        pytest.skip("AR2 repository not available for cross-layer test")
+    if ar2_path not in sys.path:
+        sys.path.append(ar2_path)
     from unittest.mock import MagicMock
     sys.modules['pyproj'] = MagicMock()
     sys.modules['h3'] = MagicMock()
@@ -222,8 +233,19 @@ def test_revoked_credential_rejected_by_both_layers(client, fieldlist, dev_issue
 
 def test_valid_credential_accepted_by_both_layers(client, fieldlist, dev_issuer, monkeypatch, tmp_path):
     import sys
-    if '/home/rajat/Downloads/rnaura_work/ar2' not in sys.path:
-        sys.path.append('/home/rajat/Downloads/rnaura_work/ar2')
+    import os
+    import pytest
+    
+    ar2_paths = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../ar2')),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), '../../ar2'))
+    ]
+    ar2_path = next((p for p in ar2_paths if os.path.exists(p)), None)
+    
+    if not ar2_path:
+        pytest.skip("AR2 repository not available for cross-layer test")
+    if ar2_path not in sys.path:
+        sys.path.append(ar2_path)
     from unittest.mock import MagicMock
     sys.modules['pyproj'] = MagicMock()
     sys.modules['h3'] = MagicMock()
