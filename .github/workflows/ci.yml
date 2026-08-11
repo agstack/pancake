@@ -41,8 +41,21 @@ jobs:
       - name: Legacy + regression tests
         run: python -m pytest tests -q
 
+      - name: Lint with ruff
+        run: |
+          pip install ruff==0.6.9
+          ruff check services/pancake_services services/tests
+
+      - name: Checkout AR2
+        uses: actions/checkout@v4
+        with:
+          repository: agstack/ar2
+          ref: rajat
+          path: ar2
+          token: ${{ secrets.AGSTACK_PAT }}
+
       - name: Services test suite
-        run: python -m pytest services/tests -q --cov=services/pancake_services --cov-report=term
+        run: python -m pytest services/tests -q -ra --strict-markers --cov=services/pancake_services --cov-report=term
 
       - name: Test-issuer kit smoke
         working-directory: services

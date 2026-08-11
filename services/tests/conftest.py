@@ -150,3 +150,16 @@ def fieldlist(client, owner_headers, geoids):
 def mock_ar2():
     with fake_ar2_node():
         yield
+
+
+REQUIRED = {"test_revoked_credential_rejected_by_both_layers",
+            "test_valid_credential_accepted_by_both_layers"}
+
+def pytest_sessionfinish(session, exitstatus):
+    """Cross-layer tests are load-bearing: a skip is a failure, not a pass."""
+    skipped = {r.nodeid.split("::")[-1] for r in session.config.pluginmanager
+               .get_plugin("terminalreporter").stats.get("skipped", [])
+               for r in [r]}
+    missed = REQUIRED & skipped
+    if missed:
+        raise pytest.UsageError(f"cross-layer tests skipped, not run: {sorted(missed)}")
