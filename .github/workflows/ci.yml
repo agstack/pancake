@@ -50,7 +50,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: agstack/ar2
-          ref: rajat
+          ref: day4-fixes
           path: ar2
           token: ${{ secrets.AGSTACK_PAT }}
 
