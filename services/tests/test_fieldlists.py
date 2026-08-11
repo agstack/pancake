@@ -1,5 +1,6 @@
 """FieldList endpoints: idempotent creation, owner scoping, proofs."""
 from pancake_services.grants.merkle import merkle_root, verify_inclusion
+import pytest
 
 
 def test_create_returns_merkle_listid(client, owner_headers, geoids):
@@ -60,7 +61,7 @@ def test_proof_for_nonmember_404(client, owner_headers, fieldlist):
     assert response.status_code == 404
 
 
-import pytest
+
 
 @pytest.mark.parametrize("row_name, headers_func, expected_status", [
     ("1 farmer, no secret, no cred",        lambda o, t: o,                                              403),

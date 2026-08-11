@@ -83,7 +83,7 @@ def is_revoked(status: dict, local_path: str = None) -> bool:
     try:
         sl_json = json.loads(status_list_data)
         encoded = sl_json.get("encoded") or sl_json.get("status_list", {}).get("lst")
-    except:
+    except Exception:
         pass
         
     if not encoded:

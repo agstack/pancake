@@ -55,7 +55,9 @@ jobs:
           token: ${{ secrets.AGSTACK_PAT }}
 
       - name: Services test suite
-        run: python -m pytest services/tests -q -ra --strict-markers --cov=services/pancake_services --cov-report=term
+        run: |
+          pip install -r ar2/requirements.txt
+          python -m pytest services/tests -q -ra --strict-markers --cov=services/pancake_services --cov-report=term
 
       - name: Test-issuer kit smoke
         working-directory: services
