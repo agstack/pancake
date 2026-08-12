@@ -1,0 +1,47 @@
+# TAP vendor config for the PnD DPI demo.
+#
+# The worker (pancake_services.tap.worker) registers each enabled vendor and
+# schedules its tasks. A vendor is SKIPPED when its `enabled_if_env` variable is
+# empty/unset -- so with no TerraPipe credentials the demo falls back to `seed`
+# automatically, and lights up TerraPipe the moment creds are provided.
+#
+# Replace the demo GeoID(s) with the GeoID you get back from register-field.
+
+vendors:
+  # --- Live TerraPipe (enabled only when TERRAPIPE_SECRET is set) ---
+  - vendor_name: terrapipe
+    adapter_class: pancake_services.tap.adapters.terrapipe_weather.TerrapipeWeatherAdapter
+    enabled_if_env: TERRAPIPE_SECRET
+    base_url: ${TERRAPIPE_BASE_URL}
+    auth_method: api_key
+    timeout: 60
+    sirup_types: [weather_forecast, weather_historical]
+    credentials:
+      secretkey: ${TERRAPIPE_SECRET}
+      client: ${TERRAPIPE_CLIENT}
+      email: ${TERRAPIPE_EMAIL}
+      password: ${TERRAPIPE_PASSWORD}
+    schedule:
+      interval_seconds: 3600
+      tasks:
+        - geoid: DEMO_GEOID_REPLACE_ME
+          sirup_type: weather_historical
+          params: {mode: historical, days: 14}
+        - geoid: DEMO_GEOID_REPLACE_ME
+          sirup_type: weather_forecast
+          params: {mode: forecast, days: 7}
+
+  # --- Offline seed generator (always enabled; the demo's zero-dependency path) ---
+  - vendor_name: seed
+    adapter_class: pancake_services.tap.adapters.seed_weather.SeedWeatherAdapter
+    auth_method: none
+    sirup_types: [weather_forecast, weather_historical]
+    schedule:
+      interval_seconds: 3600
+      tasks:
+        - geoid: DEMO_GEOID_REPLACE_ME
+          sirup_type: weather_historical
+          params: {mode: historical, days: 14}
+        - geoid: DEMO_GEOID_REPLACE_ME
+          sirup_type: weather_forecast
+          params: {mode: forecast, days: 7}

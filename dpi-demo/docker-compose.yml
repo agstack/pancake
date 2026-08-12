@@ -1,0 +1,108 @@
+# PnD DPI OpenScience demo stack.
+# Profiles:
+#   core     - postgres + pancake grants + pancake TAP worker + agstack-pnd (all from repos we control)
+#   registry - AR2 hub + AR2 node (external repos agstack/ar2-hub, agstack/ar2 at tag v0.9-review)
+# Run:  docker compose --profile core --profile registry up --build
+name: pnd-dpi-demo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["core"]
+    environment:
+      POSTGRES_DB: pancake
+      POSTGRES_USER: pancake
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pancake-dev-only}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pnd_demo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pancake"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  hub:
+    profiles: ["registry"]
+    build:
+      context: ../../ar2-hub
+      dockerfile: ../pancake/dpi-demo/hub.Dockerfile
+    environment:
+      DATABASE_URL: ${HUB_DATABASE_URL:-sqlite:////data/hub.db}
+      WORLD_SHP_FILE: ${WORLD_SHP_FILE:-/app/world.shp}
+      REGISTRY_SERVERS: ${REGISTRY_SERVERS:-[]}
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "hub_main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  node:
+    profiles: ["registry"]
+    build:
+      context: ../../ar2
+      dockerfile: ../pancake/dpi-demo/node.Dockerfile
+    depends_on:
+      - hub
+    environment:
+      JWKS_URL: ${HUB_JWKS_URL:-http://hub:8000/.well-known/jwks.json}
+      AR_TRUSTED_ISSUER_PUBKEY: /run/secrets/issuer_pub.pem
+    ports:
+      - "8001:8001"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+
+  pancake-grants:
+    profiles: ["core"]
+    build:
+      context: ../services
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://pancake:${POSTGRES_PASSWORD:-pancake-dev-only}@postgres:5432/pancake
+      PANCAKE_ISSUER_KEY: ${PANCAKE_ISSUER_KEY:?set PANCAKE_ISSUER_KEY (make keys)}
+      PANCAKE_ISSUER_ID: ${PANCAKE_ISSUER_ID:-did:web:pancake.local}
+      HUB_JWKS_URL: ${HUB_JWKS_URL:-http://hub:8000/.well-known/jwks.json}
+      HUB_URL: ${HUB_URL:-http://hub:8000}
+      STATUS_LIST_URI: ${STATUS_LIST_URI:-http://pancake-grants:8100/grants/status-list}
+      PANCAKE_REQUIRE_GRANT_FOR_WEATHER: ${PANCAKE_REQUIRE_GRANT_FOR_WEATHER:-false}
+    ports:
+      - "8100:8100"
+
+  pancake-tap:
+    profiles: ["core"]
+    build:
+      context: ../services
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://pancake:${POSTGRES_PASSWORD:-pancake-dev-only}@postgres:5432/pancake
+      TAP_VENDORS_CONFIG: /app/dpi-demo/tap_vendors.yaml
+      TERRAPIPE_BASE_URL: ${TERRAPIPE_BASE_URL:-https://appserver.terrapipe.io}
+      TERRAPIPE_SECRET: ${TERRAPIPE_SECRET:-}
+      TERRAPIPE_CLIENT: ${TERRAPIPE_CLIENT:-}
+      TERRAPIPE_EMAIL: ${TERRAPIPE_EMAIL:-}
+      TERRAPIPE_PASSWORD: ${TERRAPIPE_PASSWORD:-}
+    volumes:
+      - ./tap_vendors.yaml:/app/dpi-demo/tap_vendors.yaml:ro
+    command: ["python", "-m", "pancake_services.tap.worker", "--config", "/app/dpi-demo/tap_vendors.yaml"]
+
+  pnd:
+    profiles: ["core"]
+    build:
+      context: ../../opensource-pestmodels
+      dockerfile: docker/Dockerfile
+    depends_on:
+      - pancake-grants
+    environment:
+      PND_WEATHER_PROVIDER: ${PND_WEATHER_PROVIDER:-dpi}
+      PND_PANCAKE_URL: ${PND_PANCAKE_URL:-http://pancake-grants:8100}
+      PND_AGSTACK_REGISTRY_URL: ${PND_AGSTACK_REGISTRY_URL:-http://node:8001}
+      PND_NOAA_API_TOKEN: ${PND_NOAA_API_TOKEN:-}
+    ports:
+      - "8080:8000"
+
+volumes:
+  pnd_demo_pgdata:
