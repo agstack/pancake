@@ -78,7 +78,7 @@ def build_odrl(jti: str, list_id: str, exp: int) -> dict:
     }
 
 
-def mint_all(out_dir: Path) -> dict:
+def mint_all(out_dir: Path, validity_days: int = 30) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     private_pem, public_pem = generate_keypair_pem()
     (out_dir / "dev_issuer_private.pem").write_bytes(private_pem)
@@ -86,7 +86,7 @@ def mint_all(out_dir: Path) -> dict:
 
     list_id = merkle.merkle_root(DEV_GEOIDS)
     now = int(time.time())
-    future = now + 30 * 24 * 3600
+    future = now + validity_days * 24 * 3600
     past = now - 3600
 
     creds = {}
@@ -156,9 +156,16 @@ def mint_all(out_dir: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default=str(Path(__file__).parent / "dev_keys"))
+    parser.add_argument(
+        "--days", type=int, default=30,
+        help="validity window for the non-expired credentials. Fixtures that "
+             "are committed into another repo (ar2's verifier tests) should "
+             "use a long window: when 'tampered' or 'revoked' expires, the "
+             "verifier still rejects it -- but for the wrong reason, and the "
+             "test passes while testing nothing.")
     args = parser.parse_args()
 
-    manifest = mint_all(Path(args.out))
+    manifest = mint_all(Path(args.out), validity_days=args.days)
     print(f"Minted {len(manifest['credentials'])} test credentials into {args.out}")
     print(f"ListID: {manifest['list_id']}")
 
