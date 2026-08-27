@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: EUPL-1.2
+# Copyright (c) 2026 AgStack project contributors.
+# Licensed under the EUPL, Version 1.2; see the LICENSE file for the full text.
+
 """BITE query API: GeoID-indexed access to ingested vendor data.
 
 Weather reads can be consent-gated: when ``require_grant_for_weather`` is set,

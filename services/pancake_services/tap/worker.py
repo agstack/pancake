@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: EUPL-1.2
+# Copyright (c) 2026 AgStack project contributors.
+# Licensed under the EUPL, Version 1.2; see the LICENSE file for the full text.
+
 """TAP worker: wire vendor adapters to the BITE store and run the scheduler.
 
     python -m pancake_services.tap.worker --config dpi-demo/tap_vendors.yaml

@@ -200,7 +200,7 @@ eudr_report = eudr_compliance.generate_eudr_report(shipment_geoid='shipment-123'
 - **AI/ML**: OpenAI GPT-4 (embeddings and queries), local models supported
 - **Blockchain**: Hyperledger Fabric (payments), Hyperledger Indy/Aries (identity)
 - **Languages**: Python 3.9+
-- **License**: Apache 2.0 (Code) | CC BY 4.0 (Documentation)
+- **License**: EUPL-1.2 (Code) | CC BY 4.0 (Documentation)
 
 ---
 
@@ -224,7 +224,9 @@ PANCAKE is an AgStack project under The Linux Foundation. We welcome contributio
 
 ## License
 
-- **Code**: Apache 2.0
+- **Code**: EUPL-1.2 (European Union Public Licence — copyleft that also binds
+  hosted services, so modified versions must be contributed back rather than
+  proliferated as closed variants; see `LICENSE`)
 - **Documentation**: CC BY 4.0
 
 ---

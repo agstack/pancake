@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: EUPL-1.2
+# Copyright (c) 2026 AgStack project contributors.
+# Licensed under the EUPL, Version 1.2; see the LICENSE file for the full text.
+
 """Minimal SD-JWT VC implementation per services/specs/CREDENTIAL_PROFILE.md.
 
 Implements the subset of draft-ietf-oauth-sd-jwt-vc that the field-access

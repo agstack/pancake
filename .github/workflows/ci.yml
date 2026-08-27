@@ -3,6 +3,14 @@ name: Pancake CI
 on: [push, pull_request]
 
 jobs:
+  license:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: License posture (canonical EUPL-1.2 + SPDX headers)
+        run: bash scripts/license_check.sh
+
   lint:
     runs-on: ubuntu-latest
     steps:

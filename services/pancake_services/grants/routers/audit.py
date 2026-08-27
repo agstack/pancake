@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: EUPL-1.2
+# Copyright (c) 2026 AgStack project contributors.
+# Licensed under the EUPL, Version 1.2; see the LICENSE file for the full text.
+
 """OpenScience Auditing API: per-GeoID provenance from the signed MEAL ledger."""
 from __future__ import annotations
 
