@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: EUPL-1.2
+# Copyright (c) 2026 AgStack project contributors.
+# Licensed under the EUPL, Version 1.2; see the LICENSE file for the full text.
+
 """Regression tests for the legacy POC MEAL implementation (implementation/meal.py).
 
 Covers findings PC-2026-0001/PC-2026-0004: previous_packet_id linkage and

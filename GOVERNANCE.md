@@ -2,7 +2,7 @@
 
 **Project**: BITE/PANCAKE/TAP/SIRUP/SIP  
 **Organization**: AgStack  
-**License**: Apache 2.0  
+**License**: EUPL-1.2 (code) | CC BY 4.0 (documentation)  
 **Version**: 1.0  
 **Last Updated**: November 2024
 

@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: EUPL-1.2
+# Copyright (c) 2026 AgStack project contributors.
+# Licensed under the EUPL, Version 1.2; see the LICENSE file for the full text.
+
 """Canonical TAP adapter interface (service-grade port of implementation/tap_adapter_base.py).
 
 Every vendor adapter implements three steps:

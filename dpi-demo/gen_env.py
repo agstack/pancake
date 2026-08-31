@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: EUPL-1.2
+# Copyright (c) 2026 AgStack project contributors.
+# Licensed under the EUPL, Version 1.2; see the LICENSE file for the full text.
+
 """Create .env from .env.example with a freshly generated Pancake issuer key.
 
 Idempotent: does nothing if .env already exists. Kept as a separate script so
