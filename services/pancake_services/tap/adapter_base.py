@@ -35,6 +35,15 @@ class SIRUPType(Enum):
     CROP_HEALTH = "crop_health"
     PEST_DISEASE = "pest_disease"
     MARKET_PRICE = "market_price"
+    # A land-use finding about a field, with the evidence it rests on: the EUDR
+    # deforestation screen is the first. Distinct from CROP_HEALTH because it is
+    # a verdict a buyer acts on rather than an observation, and it is only
+    # meaningful carrying its coverage and provenance with it.
+    LAND_USE_SCREEN = "land_use_screen"
+    # A vegetation index series (NDVI and its relatives): an index, not a
+    # measurement of any physical quantity, so it is not SATELLITE_IMAGERY and
+    # it has no unit.
+    VEGETATION_INDEX = "vegetation_index"
     CUSTOM = "custom"
 
 

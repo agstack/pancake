@@ -156,11 +156,29 @@ def mock_ar2():
 REQUIRED = {"test_revoked_credential_rejected_by_both_layers",
             "test_valid_credential_accepted_by_both_layers"}
 
+# Modules that must run rather than skip. These are the checks that exercise
+# another repository's actual behaviour, so they are the only ones that can
+# catch it drifting; skipping them leaves the adapters agreeing with fixtures
+# their own author wrote. The value after the filename is what to do about it.
+REQUIRED_MODULES = {
+    "test_terrapipe_os_contract.py":
+        "clone terrapipe-os beside pancake and `pip install -e ../../terrapipe-os`",
+}
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Cross-layer tests are load-bearing: a skip is a failure, not a pass."""
-    skipped = {r.nodeid.split("::")[-1] for r in session.config.pluginmanager
-               .get_plugin("terminalreporter").stats.get("skipped", [])
-               for r in [r]}
+    reports = (session.config.pluginmanager
+               .get_plugin("terminalreporter").stats.get("skipped", []))
+    skipped = {r.nodeid.split("::")[-1] for r in reports}
     missed = REQUIRED & skipped
     if missed:
         raise pytest.UsageError(f"cross-layer tests skipped, not run: {sorted(missed)}")
+
+    # A module-level skip reports as the file, with no test name after "::".
+    for module, remedy in REQUIRED_MODULES.items():
+        if any(module in r.nodeid for r in reports):
+            raise pytest.UsageError(
+                f"{module} was skipped, so the connector was never checked against the "
+                f"real service. To fix: {remedy}"
+            )

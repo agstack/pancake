@@ -31,6 +31,84 @@ vendors:
           sirup_type: weather_forecast
           params: {mode: forecast, days: 7}
 
+  # --- Open-science node (enabled only when TERRAPIPE_OS_URL is set) ---
+  #
+  # A terrapipe-os node holds no Pancake secret. It verifies the access token
+  # against the same hub Pancake does, so the credentials below are hub client
+  # credentials rather than a vendor key.
+  #
+  # The screen and the NDVI series are field-scoped only when a grant is
+  # presented. Without one the node still answers, about the neighbourhood
+  # cell rather than the field, and every BITE says which it was -- so the
+  # demo runs before any grant is issued and gets sharper once one is.
+  #
+  # Grants are therefore NOT named as ${...} here. Interpolation fails loudly
+  # on an unset variable, by design, so a placeholder for something that is
+  # legitimately absent would stop the whole worker from starting. They are
+  # read instead from PANCAKE_GRANT_<geoid> at request time (see
+  # metadata.grant_env_template), where absent means coarse rather than fatal.
+  - vendor_name: terrapipe-os-deforestation
+    adapter_class: pancake_services.tap.adapters.terrapipe_os.DeforestationAdapter
+    enabled_if_env: TERRAPIPE_OS_URL
+    base_url: ${TERRAPIPE_OS_URL}
+    auth_method: bearer_token
+    timeout: 120
+    sirup_types: [land_use_screen]
+    credentials:
+      hub_url: ${HUB_URL}
+      client_id: ${TERRAPIPE_OS_CLIENT_ID}
+      client_secret: ${TERRAPIPE_OS_CLIENT_SECRET}
+    metadata:
+      # A per-GeoID grant, checked before the adapter-wide one above, so one
+      # vendor entry can serve several fields held by different owners.
+      grant_env_template: PANCAKE_GRANT_{geoid}
+    schedule:
+      # A deforestation verdict changes when a new annual raster lands, not
+      # hourly. Daily is already generous; the BITE store dedupes the rest.
+      interval_seconds: 86400
+      tasks:
+        - geoid: DEMO_GEOID_REPLACE_ME
+          sirup_type: land_use_screen
+
+  - vendor_name: terrapipe-os-ndvi
+    adapter_class: pancake_services.tap.adapters.terrapipe_os.VegetationIndexAdapter
+    enabled_if_env: TERRAPIPE_OS_URL
+    base_url: ${TERRAPIPE_OS_URL}
+    auth_method: bearer_token
+    timeout: 120
+    sirup_types: [vegetation_index]
+    credentials:
+      hub_url: ${HUB_URL}
+      client_id: ${TERRAPIPE_OS_CLIENT_ID}
+      client_secret: ${TERRAPIPE_OS_CLIENT_SECRET}
+    metadata:
+      grant_env_template: PANCAKE_GRANT_{geoid}
+    schedule:
+      interval_seconds: 21600
+      tasks:
+        - geoid: DEMO_GEOID_REPLACE_ME
+          sirup_type: vegetation_index
+          # One read per date, so a wide window is a lot of round trips.
+          params: {days: 30}
+
+  - vendor_name: terrapipe-os-weather
+    adapter_class: pancake_services.tap.adapters.terrapipe_os.WeatherForecastAdapter
+    enabled_if_env: TERRAPIPE_OS_URL
+    base_url: ${TERRAPIPE_OS_URL}
+    auth_method: bearer_token
+    timeout: 120
+    sirup_types: [weather_forecast]
+    credentials:
+      hub_url: ${HUB_URL}
+      client_id: ${TERRAPIPE_OS_CLIENT_ID}
+      client_secret: ${TERRAPIPE_OS_CLIENT_SECRET}
+    schedule:
+      interval_seconds: 21600
+      tasks:
+        - geoid: DEMO_GEOID_REPLACE_ME
+          sirup_type: weather_forecast
+          params: {days: 7}
+
   # --- Offline seed generator (always enabled; the demo's zero-dependency path) ---
   - vendor_name: seed
     adapter_class: pancake_services.tap.adapters.seed_weather.SeedWeatherAdapter
