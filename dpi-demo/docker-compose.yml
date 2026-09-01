@@ -1,8 +1,16 @@
 # PnD DPI OpenScience demo stack.
 # Profiles:
-#   core     - postgres + pancake grants + pancake TAP worker + agstack-pnd (all from repos we control)
-#   registry - AR2 hub + AR2 node (external repos agstack/ar2-hub, agstack/ar2 at tag v0.9-review)
+#   core        - postgres + pancake grants + pancake TAP worker + agstack-pnd (all from repos we control)
+#   registry    - AR2 hub + AR2 node (external repos agstack/ar2-hub, agstack/ar2 at tag v0.9-review)
+#   openscience - terrapipe-os node: deforestation screen, NDVI, GFS forecast over mirrored public data
 # Run:  docker compose --profile core --profile registry up --build
+#       docker compose --profile core --profile registry --profile openscience up --build
+#
+# The openscience profile is separate because it is the only one that needs
+# data mounted from outside the repositories. Without the mirrored rasters the
+# node starts and answers honestly -- every layer reports `not_mirrored` rather
+# than zero -- so bringing it up with an empty share is a valid way to see the
+# shape of the answer before the data lands.
 name: pnd-dpi-demo
 
 services:
@@ -50,6 +58,42 @@ services:
       - "8001:8001"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
 
+  terrapipe-os:
+    profiles: ["openscience"]
+    build:
+      context: ../../terrapipe-os
+      dockerfile: Dockerfile
+    environment:
+      # The node resolves GeoIDs against the AR2 node and verifies callers
+      # against the hub's JWKS. It holds no Pancake or vendor secret.
+      AR2_NODE_URL: ${AR2_NODE_URL:-http://node:8001}
+      AR2_HUB_URL: ${HUB_URL:-http://hub:8000}
+      HUB_JWKS_URL: ${HUB_JWKS_URL:-http://hub:8000/.well-known/jwks.json}
+      # Client credentials for the node's own calls to AR2. Optional: without
+      # them the node can still answer for GeoIDs that need no authentication.
+      TERRAPIPE_OS_CLIENT_ID: ${TERRAPIPE_OS_CLIENT_ID:-}
+      TERRAPIPE_OS_CLIENT_SECRET: ${TERRAPIPE_OS_CLIENT_SECRET:-}
+      # Publishing is off unless an issuer for layer-publish credentials is
+      # named, so a demo node cannot have layers pushed into it by accident.
+      PUBLISH_JWKS_URL: ${PUBLISH_JWKS_URL:-}
+    volumes:
+      # Read-only: a node that can write to the mirror can quietly disagree
+      # with the publisher. Defaults point at empty local directories so the
+      # profile comes up on a laptop with no share mounted.
+      - ${TERRAPIPE_SHARE:-./share}:/share:ro
+      - ${TERRAPIPE_NETWORK:-./network}:/network:ro
+    ports:
+      - "8200:8200"
+    healthcheck:
+      # /health is open by design and reports which mirrors are actually
+      # mounted, so an empty share is visible here rather than as a puzzling
+      # 503 on the first screen.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8200/health').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   pancake-grants:
     profiles: ["core"]
     build:
@@ -85,6 +129,14 @@ services:
       TERRAPIPE_CLIENT: ${TERRAPIPE_CLIENT:-}
       TERRAPIPE_EMAIL: ${TERRAPIPE_EMAIL:-}
       TERRAPIPE_PASSWORD: ${TERRAPIPE_PASSWORD:-}
+      # Open-science node. Unset means the three terrapipe-os vendors are
+      # skipped and the demo keeps its offline path, so `--profile core` alone
+      # still runs. Set it (the openscience profile publishes the name below)
+      # and the deforestation, NDVI and forecast vendors light up.
+      TERRAPIPE_OS_URL: ${TERRAPIPE_OS_URL:-}
+      TERRAPIPE_OS_CLIENT_ID: ${TERRAPIPE_OS_CLIENT_ID:-}
+      TERRAPIPE_OS_CLIENT_SECRET: ${TERRAPIPE_OS_CLIENT_SECRET:-}
+      HUB_URL: ${HUB_URL:-http://hub:8000}
     volumes:
       - ./tap_vendors.yaml:/app/dpi-demo/tap_vendors.yaml:ro
     command: ["python", "-m", "pancake_services.tap.worker", "--config", "/app/dpi-demo/tap_vendors.yaml"]

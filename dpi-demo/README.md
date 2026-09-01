@@ -63,6 +63,32 @@ Bring up everything (requires the `ar2` / `ar2-hub` clones):
 docker compose --profile core --profile registry up --build
 ```
 
+### `openscience`: the terrapipe-os node
+
+Adds a [terrapipe-os](https://github.com/sumerjohal/terrapipe-os) node on port
+8200, which answers a deforestation screen, an NDVI series and a GFS forecast
+for a GeoID from mirrored public data. This is the EUDR path, and it needs no
+Earth Engine account and no FAO credentials.
+
+```bash
+docker compose --profile core --profile registry --profile openscience up --build
+```
+
+Two things to know before running it.
+
+**It needs the mirror mounted, and says so when it is not.** Point
+`TERRAPIPE_SHARE` and `TERRAPIPE_NETWORK` at the ingested stores. Bring it up
+without them and the node still starts and still answers: every layer reports
+`not_mirrored` rather than a zero, which is a useful way to see the shape of a
+screen before the rasters land. It is not a clean bill of health, and no BITE
+it produces can be mistaken for one.
+
+**The screen is field-scoped only with a grant.** Pancake issues those. Without
+one the node answers about the neighbourhood cell rather than the field, and
+every BITE records which it was, so the demo is meaningful before any grant
+exists and sharper once one does. Set `PANCAKE_GRANT_<geoid>` on the TAP worker
+to hand it a grant for a specific field.
+
 ## Version pinning (important)
 
 The demo was validated against AR hub/node tag **`v0.9-review`** (RS256 hub tokens +

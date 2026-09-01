@@ -7,7 +7,7 @@ AR2_DIR := $(AGSTACK_ROOT)/ar2
 HUB_DIR := $(AGSTACK_ROOT)/ar2-hub
 PIN_TAG := v0.9-review
 
-.PHONY: demo core clone-deps keys env up down logs notebook clean
+.PHONY: demo core clone-deps keys env up openscience down logs notebook clean
 
 demo: clone-deps env core ## Full demo: deps + env + core stack
 
@@ -17,8 +17,11 @@ core: env ## Bring up the core stack (pancake + tap + pnd + postgres)
 up: env ## Bring up everything including AR2 hub + node
 	docker compose --profile core --profile registry up --build
 
+openscience: env ## Bring up everything plus the terrapipe-os node (EUDR screen, NDVI, GFS)
+	docker compose --profile core --profile registry --profile openscience up --build
+
 down: ## Stop the stack
-	docker compose --profile core --profile registry down
+	docker compose --profile core --profile registry --profile openscience down
 
 logs: ## Tail logs
 	docker compose logs -f
