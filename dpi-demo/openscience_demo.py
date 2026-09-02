@@ -44,11 +44,20 @@ NODE_URL = os.environ.get("AR2_NODE_URL", "http://localhost:8001")
 PANCAKE_URL = os.environ.get("PANCAKE_URL", "http://localhost:8100")
 TERRAPIPE_OS_URL = os.environ.get("TERRAPIPE_OS_URL", "http://localhost:8200")
 
+# The four demo fields, vendored into this repository rather than read out of
+# terrapipe-os. terrapipe-os is private; pancake is not. Resolving these only
+# from there meant an outside reviewer could not get as far as listing the
+# fields, so the notebook's opening section failed on the thing that needs no
+# services at all. The vendored copy is preferred even when terrapipe-os is
+# present, so the demo behaves the same either way, and
+# tests/test_demo_fields_vendored.py fails when the two have drifted apart.
+_VENDORED_FIELDS = Path(__file__).resolve().parent / "honduras_demo_fields.geojson"
+_UPSTREAM_FIELDS = (
+    Path(__file__).resolve().parents[2] / "terrapipe-os" / "examples" / "honduras_demo_fields.geojson"
+)
 DEMO_FIELDS = Path(
-    os.environ.get(
-        "DEMO_FIELDS",
-        str(Path(__file__).resolve().parents[2] / "terrapipe-os" / "examples" / "honduras_demo_fields.geojson"),
-    )
+    os.environ.get("DEMO_FIELDS")
+    or (_VENDORED_FIELDS if _VENDORED_FIELDS.is_file() else _UPSTREAM_FIELDS)
 )
 
 LIVE, LOCAL, SKIPPED, FAILED = "LIVE", "LOCAL", "SKIPPED", "FAILED"
@@ -202,7 +211,10 @@ def demo_fields() -> list[dict[str, Any]]:
     real places.
     """
     if not DEMO_FIELDS.is_file():
-        raise FileNotFoundError(f"{DEMO_FIELDS} not found; run bin/place-demo-fields in terrapipe-os")
+        raise FileNotFoundError(
+            f"{DEMO_FIELDS} not found. A copy is vendored at dpi-demo/honduras_demo_fields.geojson; "
+            "if it is missing here, regenerate it with bin/place-demo-fields in terrapipe-os."
+        )
     return json.loads(DEMO_FIELDS.read_text())["features"]
 
 
@@ -326,6 +338,136 @@ def post(url: str, *, token: str | None = None, **kwargs) -> requests.Response:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return requests.post(url, headers=headers, timeout=kwargs.pop("timeout", 60), **kwargs)
+
+
+# --------------------------------------------------------------------------
+# the three calls that have to be made the way the services actually take them
+# --------------------------------------------------------------------------
+#
+# Each of these was wrong in the notebook until 2026-09-02, and each was wrong
+# in the same way: the cell called a route that does not exist, or sent a body
+# the route does not accept, and the failure was absorbed into a SKIPPED badge.
+# A skip reads as "the stack was not up", so the notebook looked honest while
+# demonstrating nothing. They are functions here so that the contract lives in
+# one place and tests/test_notebook_routes.py can check it.
+
+
+def hub_token() -> tuple[str | None, str]:
+    """A bearer token from the hub, and how it was obtained.
+
+    The hub issues these from client credentials at ``POST /users/token``. The
+    notebook used to read ``HUB_TOKEN`` from the environment and carry on when it
+    was empty, which turns every authenticated call into a 401 that the notebook
+    then reports as the service being down.
+
+    Returns the token and a sentence naming its source, so a cell can say which
+    of the two it got rather than only whether it has one.
+    """
+    preset = os.environ.get("HUB_TOKEN", "").strip()
+    if preset:
+        return preset, "HUB_TOKEN from the environment"
+
+    client_id = os.environ.get("DEMO_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("DEMO_CLIENT_SECRET", "").strip()
+    if not (client_id and client_secret):
+        return None, (
+            "no HUB_TOKEN, and no DEMO_CLIENT_ID/DEMO_CLIENT_SECRET to exchange for one. "
+            "Authenticated calls below will be refused rather than skipped, which is the "
+            "truthful outcome"
+        )
+    try:
+        r = requests.post(
+            f"{HUB_URL}/users/token",
+            json={"client_id": client_id, "client_secret": client_secret},
+            timeout=15,
+        )
+    except requests.RequestException as exc:
+        return None, f"the hub at {HUB_URL} could not be reached: {exc.__class__.__name__}"
+    if not r.ok:
+        return None, f"the hub refused these client credentials: HTTP {r.status_code} {r.text[:120]}"
+    token = (r.json() or {}).get("access_token")
+    if not token:
+        return None, f"the hub answered {r.status_code} without an access_token"
+    return token, f"exchanged client credentials at {HUB_URL}/users/token"
+
+
+def wkt_of(geometry: dict[str, Any]) -> str:
+    """A GeoJSON polygon as the WKT that AR2 registration takes.
+
+    AR2's ``/register-field-boundary`` accepts ``{"wkt": ...}`` and nothing else;
+    posting the GeoJSON geometry object, as this notebook did, is a 422. Written
+    out rather than delegated to shapely so the axis order is visible: GeoJSON
+    positions are [longitude, latitude] and WKT is "longitude latitude", so the
+    pairs pass through unswapped, which is the part that goes wrong silently.
+    """
+    if geometry.get("type") != "Polygon":
+        raise ValueError(f"only Polygon is registered here, not {geometry.get('type')!r}")
+    rings = []
+    for ring in geometry["coordinates"]:
+        positions = ", ".join(f"{lon:.8f} {lat:.8f}" for lon, lat in ring)
+        rings.append(f"({positions})")
+    return f"POLYGON({', '.join(rings)})"
+
+
+def geoid_of(response: requests.Response) -> str | None:
+    """The GeoID out of an AR2 registration response, under either spelling.
+
+    AR2's response model declares aliases, so the serialised key is ``"Geo Id"``
+    with a space and a capital. Reading ``geo_id`` returns None against a
+    perfectly successful registration -- which the notebook then displayed as a
+    refusal. Both spellings are accepted because the hub and the node have
+    disagreed about this before.
+    """
+    if not response.ok:
+        return None
+    body = response.json() or {}
+    for key in ("Geo Id", "geoid", "geo_id"):
+        value = body.get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def field_grant(geo_ids: list[str], token: str, *, purpose: str = "open-science demo") -> tuple[str | None, str]:
+    """A field-access credential for these GeoIDs, and how it went.
+
+    Two calls, not one. Pancake has no ``POST /grants``: a grant is issued
+    against a *field list*, so the list is created first at ``POST /fieldlists``
+    and its ``list_id`` names the subject of the grant at
+    ``POST /grants/issue``. The notebook posted to ``/grants`` and got a 404,
+    which it reported as the grant being unavailable.
+    """
+    try:
+        made = post(
+            f"{PANCAKE_URL}/fieldlists",
+            token=token,
+            json={"name": "openscience-demo", "geoids": geo_ids},
+        )
+    except requests.RequestException as exc:
+        return None, f"Pancake at {PANCAKE_URL} could not be reached: {exc.__class__.__name__}"
+    if not made.ok:
+        return None, f"the field list was refused: HTTP {made.status_code} {made.text[:160]}"
+    list_id = (made.json() or {}).get("list_id")
+    if not list_id:
+        return None, f"the field list came back without a list_id: {made.text[:160]}"
+
+    issued = post(
+        f"{PANCAKE_URL}/grants/issue",
+        token=token,
+        json={
+            "list_id": list_id,
+            "grantee_account": "self",
+            "purpose": purpose,
+            "validity_days": 30,
+            "masking_level": "L1",
+        },
+    )
+    if not issued.ok:
+        return None, f"the grant was refused: HTTP {issued.status_code} {issued.text[:160]}"
+    credential = (issued.json() or {}).get("credential")
+    if not credential:
+        return None, f"the grant came back without a credential: {issued.text[:160]}"
+    return credential, f"list {list_id[:12]}... granted at L1 for {purpose!r}"
 
 
 def run_async(make_coroutine: Callable[[], Any]) -> Any:

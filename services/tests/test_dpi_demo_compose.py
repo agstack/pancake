@@ -120,3 +120,72 @@ def test_the_open_science_vendors_stay_off_until_the_node_is_named(compose):
         "the gate must default to empty, or the core-only demo tries to reach a node "
         "that was never started"
     )
+
+
+# --------------------------------------------------------------------------
+# the MCP surface, and the directories the bind mounts point at
+# --------------------------------------------------------------------------
+
+
+def test_the_agent_facing_surface_is_in_the_stack_too(compose):
+    """The MCP tools were documented and reachable only by hand until 2026-09-02.
+
+    The notebook lists them, which means an outside reviewer running the demo
+    sees a surface the stack never started. Serving it here is what makes that
+    section demonstrable rather than descriptive.
+    """
+    mcp = compose["services"]["terrapipe-os-mcp"]
+
+    assert mcp["profiles"] == ["openscience"]
+    assert "terrapipe-os-mcp" in mcp["command"]
+    assert "streamable-http" in mcp["command"], (
+        "stdio trusts whoever launched the process as the principal, which is wrong "
+        "for a service reachable on a port"
+    )
+
+
+def test_the_mcp_server_is_told_the_url_it_refuses_to_start_without(compose):
+    """It advertises this as the resource a caller's token must be issued for."""
+    assert "TERRAPIPE_OS_MCP_URL" in _environment(compose["services"]["terrapipe-os-mcp"])
+
+
+def test_the_mcp_server_sees_the_same_mirrors_read_only(compose):
+    """A second view of the same data must not be a writable one."""
+    volumes = compose["services"]["terrapipe-os-mcp"]["volumes"]
+
+    assert len(volumes) == 2
+    for volume in volumes:
+        assert volume.endswith(":ro"), volume
+
+
+def test_the_two_surfaces_do_not_contend_for_a_port(compose):
+    http = compose["services"]["terrapipe-os"]["ports"]
+    mcp = compose["services"]["terrapipe-os-mcp"]["ports"]
+
+    assert not set(p.split(":")[0] for p in http) & set(p.split(":")[0] for p in mcp)
+
+
+def test_the_default_bind_mount_sources_exist(compose):
+    """Docker creates a missing bind-mount source as a root-owned directory.
+
+    The openscience profile then comes up with two unreadable mounts, and the
+    node reports every layer as not mirrored -- which is indistinguishable from
+    an empty mirror, and sends whoever ran it looking at permissions.
+    """
+    # Split on the colon that ends the source, not on the one inside ${VAR:-default}.
+    default_of = re.compile(r"^\$\{[A-Z_]+:-([^}]+)\}:")
+    checked = 0
+    for service in ("terrapipe-os", "terrapipe-os-mcp"):
+        for volume in compose["services"][service]["volumes"]:
+            match = default_of.match(volume)
+            if match is None:
+                continue
+            checked += 1
+            fallback = match.group(1)
+            path = (DEMO / fallback).resolve()
+            assert path.is_dir(), f"{service} mounts {fallback}, which does not exist"
+            assert (path / "README.md").exists(), (
+                f"{fallback} exists but says nothing; an empty directory in a repo "
+                "gets deleted by the next person tidying up"
+            )
+    assert checked == 4, f"expected four defaulted bind mounts, matched {checked}"

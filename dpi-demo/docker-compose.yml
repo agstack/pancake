@@ -94,6 +94,34 @@ services:
       retries: 5
       start_period: 10s
 
+  terrapipe-os-mcp:
+    # The same handlers as the HTTP node, over MCP, so an agent can ask the
+    # questions a person asks through /screen and /data. A separate service
+    # rather than a second port on the one above because the two surfaces
+    # authenticate differently and should be able to fail independently: this
+    # one advertises itself as an OAuth resource and verifies every caller's
+    # hub token against TERRAPIPE_OS_MCP_URL.
+    profiles: ["openscience"]
+    build:
+      context: ../../terrapipe-os
+      dockerfile: Dockerfile
+    command: ["terrapipe-os-mcp", "--transport", "streamable-http", "--port", "8201"]
+    environment:
+      AR2_NODE_URL: ${AR2_NODE_URL:-http://node:8001}
+      AR2_HUB_URL: ${HUB_URL:-http://hub:8000}
+      HUB_JWKS_URL: ${HUB_JWKS_URL:-http://hub:8000/.well-known/jwks.json}
+      TERRAPIPE_OS_CLIENT_ID: ${TERRAPIPE_OS_CLIENT_ID:-}
+      TERRAPIPE_OS_CLIENT_SECRET: ${TERRAPIPE_OS_CLIENT_SECRET:-}
+      # The URL clients reach this server at, which is also the resource an
+      # agent's token has to be issued for. The server refuses to start over
+      # HTTP without it rather than serving unauthenticated.
+      TERRAPIPE_OS_MCP_URL: ${TERRAPIPE_OS_MCP_URL:-http://localhost:8201/mcp}
+    volumes:
+      - ${TERRAPIPE_SHARE:-./share}:/share:ro
+      - ${TERRAPIPE_NETWORK:-./network}:/network:ro
+    ports:
+      - "8201:8201"
+
   pancake-grants:
     profiles: ["core"]
     build:

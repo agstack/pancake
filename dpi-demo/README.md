@@ -89,6 +89,30 @@ every BITE records which it was, so the demo is meaningful before any grant
 exists and sharper once one does. Set `PANCAKE_GRANT_<geoid>` on the TAP worker
 to hand it a grant for a specific field.
 
+**terrapipe-os is private.** `make clone-deps` tries to clone it and carries on
+when it cannot, saying so. `make demo`, `make core` and `make up` are
+unaffected; only `make openscience` and the deforestation, NDVI and GFS half of
+the notebook need it, and those cells report `SKIPPED` with that reason rather
+than failing. Everything the notebook needs *before* it reaches a service —
+including the four demo fields — is vendored here.
+
+**Two surfaces, two services.** `terrapipe-os` on 8200 is the HTTP node;
+`terrapipe-os-mcp` on 8201 is the same handlers over MCP, for agents. They are
+separate services because they authenticate differently and should be able to
+fail independently: the MCP one advertises itself as an OAuth resource and
+refuses to start over HTTP without `TERRAPIPE_OS_MCP_URL`, rather than serving
+unauthenticated.
+
+**The mounts default to directories in this repo.** `share/` and `network/`
+exist and are empty, because Docker creates a missing bind-mount source as a
+root-owned directory — which then fails to read and looks like a permissions
+problem rather than an absent mirror. Each has a README saying what belongs
+there. Set the variables rather than copying data in:
+
+```bash
+TERRAPIPE_SHARE=/mnt/md0 TERRAPIPE_NETWORK=/network make openscience
+```
+
 ### The notebook
 
 [`openscience_dpi_demo.ipynb`](openscience_dpi_demo.ipynb) walks the EUDR path
@@ -111,6 +135,26 @@ mirrored rasters were read in process), `SKIPPED` or `FAILED`, and the last cell
 prints a ledger of all of them. Nothing invents a reading to keep the narrative
 moving, so the skipped lines are an honest list of what a given run did not
 demonstrate. `make openscience` closes most of them.
+
+To execute it headless: `make notebook-openscience`, which regenerates it from
+the builder first so a committed notebook that has drifted cannot be what gets
+run. It passes `--allow-errors` on purpose — a cell that cannot reach a service
+marks itself `SKIPPED` and the run continues, because aborting on the first
+unreachable service would leave the ledger unwritten, and the ledger is the only
+honest summary of what a run demonstrated.
+
+Measured on 2026-09-02, with nothing running: 0 cells raise, 3 steps run against
+local data, 9 skip. With `TERRAPIPE_SHARE` pointed at two ingested layers:
+9 local, 3 skipped, still 0 raising, and all four field verdicts match what the
+field placer recorded independently from the same stores.
+
+A note on how the calls are checked. Three of the notebook's calls were wrong
+until 2026-09-02 — a GeoJSON geometry posted where AR2 takes WKT, a GeoID read
+from `geo_id` where AR2 returns `Geo Id`, and a `POST /grants` that Pancake does
+not serve. None of them raised visibly: the step recorder caught each failure
+and printed `SKIPPED`, which reads as "the stack was not up". So
+`services/tests/test_notebook_routes.py` now extracts every URL the notebook
+builds and checks it against the routes those services actually declare.
 
 ## Version pinning (important)
 

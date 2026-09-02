@@ -301,11 +301,18 @@ def test_the_commodity_check_reaches_the_bite(node):
 
     commodity = bite["Body"]["sirup_data"]["commodity"]
     assert commodity["coffee_fraction"] == pytest.approx(1.0), commodity
-    # The oil-palm map is not mirrored here, so the check reports its absence
-    # rather than a zero fraction that would read as "no oil palm".
+    # No oil-palm fraction, and a named reason for its absence rather than a
+    # zero that would read as "no oil palm here". The reason changed on
+    # 2026-09-02 from not_mirrored to outside_coverage, and the second is the
+    # better answer: that product maps a belt across the north, this field is
+    # in the coffee belt, and no mirror will ever cover it because the
+    # publisher never surveyed it. "Not mirrored" invites someone to go and
+    # fetch the missing tile.
     assert "oil_palm_fraction" not in commodity
     palma = [e for e in commodity["evidence"] if "palma" in e["layer_id"]]
-    assert palma and palma[0]["absent"] == "not_mirrored"
+    assert palma, "the oil-palm check must appear even when it cannot answer"
+    assert palma[0]["absent"] == "outside_coverage"
+    assert "declared coverage" in palma[0]["note"]
 
 
 def test_without_a_grant_the_real_node_answers_about_the_neighbourhood(node):

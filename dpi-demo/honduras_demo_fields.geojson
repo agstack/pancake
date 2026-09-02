@@ -1,0 +1,239 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -88.8335028,
+              14.5742886
+            ],
+            [
+              -88.8335028,
+              14.5713756
+            ],
+            [
+              -88.8311022,
+              14.5713637
+            ],
+            [
+              -88.8311022,
+              14.5742767
+            ],
+            [
+              -88.8335028,
+              14.5742886
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "name": "compliant_coffee",
+        "title": "Coffee, no deforestation detected",
+        "narrative": "A coffee holding on land the JRC monitoring has never recorded as cleared. The screen should return no deforestation detected, with the coffee check confirming the commodity.",
+        "boundary": "synthetic: the S2 L15 cell itself, not a surveyed farm",
+        "s2_token": "8f638bd1c",
+        "centroid": [
+          -88.832302,
+          14.572826
+        ],
+        "area_ha": 8.37,
+        "expected": {
+          "coffee_fraction": 1.0,
+          "deforested_after_2020_fraction": 0.0,
+          "deforested_by_2020_fraction": 0.0,
+          "deforestation_year_fractions": {
+            "0": 1.0
+          }
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -86.0657047,
+              14.9577162
+            ],
+            [
+              -86.0657047,
+              14.9548009
+            ],
+            [
+              -86.0631561,
+              14.9547572
+            ],
+            [
+              -86.0631561,
+              14.9576725
+            ],
+            [
+              -86.0657047,
+              14.9577162
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "name": "post_cutoff_clearing",
+        "title": "Coffee on land cleared after the cut-off",
+        "narrative": "Tropical moist forest converted after 2020 and now mapped as coffee. The case the regulation exists for: the screen should return deforestation detected.",
+        "boundary": "synthetic: the S2 L15 cell itself, not a surveyed farm",
+        "s2_token": "8f6c0859c",
+        "centroid": [
+          -86.06443,
+          14.956237
+        ],
+        "area_ha": 8.88,
+        "expected": {
+          "coffee_fraction": 0.8125,
+          "deforested_after_2020_fraction": 0.4375,
+          "deforested_by_2020_fraction": 0.1875,
+          "deforestation_year_fractions": {
+            "0": 0.375,
+            "1987": 0.0312,
+            "1991": 0.0469,
+            "1994": 0.0156,
+            "1997": 0.0781,
+            "2006": 0.0156,
+            "2021": 0.1719,
+            "2022": 0.2656
+          }
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -86.4895463,
+              14.2429831
+            ],
+            [
+              -86.4895463,
+              14.2400804
+            ],
+            [
+              -86.4870189,
+              14.2400434
+            ],
+            [
+              -86.4870189,
+              14.2429461
+            ],
+            [
+              -86.4895463,
+              14.2429831
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "name": "legacy_clearing",
+        "title": "Coffee on land cleared decades ago",
+        "narrative": "Cleared before 2020, in most cells long before, and coffee since. Legal under the cut-off: the screen should return no deforestation detected, while the year-by-year evidence shows the historical clearing rather than hiding it.",
+        "boundary": "synthetic: the S2 L15 cell itself, not a surveyed farm",
+        "s2_token": "8f6e62174",
+        "centroid": [
+          -86.488283,
+          14.241513
+        ],
+        "area_ha": 8.79,
+        "expected": {
+          "coffee_fraction": 0.9531,
+          "deforested_after_2020_fraction": 0.0,
+          "deforested_by_2020_fraction": 0.9688,
+          "deforestation_year_fractions": {
+            "0": 0.0312,
+            "1988": 0.0312,
+            "1996": 0.5,
+            "1997": 0.4219,
+            "2005": 0.0156
+          }
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -88.8718935,
+              15.1991193
+            ],
+            [
+              -88.8718935,
+              15.1961948
+            ],
+            [
+              -88.8694951,
+              15.1961828
+            ],
+            [
+              -88.8694951,
+              15.1991074
+            ],
+            [
+              -88.8718935,
+              15.1991193
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "name": "marginal_clearing",
+        "title": "Coffee with a sliver of recent clearing",
+        "narrative": "A few cells of one field cleared after the cut-off. Zero-tolerance means detected; the fraction shows how small, and the operator's policy knob is what would change the call.",
+        "boundary": "synthetic: the S2 L15 cell itself, not a surveyed farm",
+        "s2_token": "8f6151f3c",
+        "centroid": [
+          -88.870694,
+          15.197651
+        ],
+        "area_ha": 8.37,
+        "expected": {
+          "coffee_fraction": 0.5156,
+          "deforested_after_2020_fraction": 0.0781,
+          "deforested_by_2020_fraction": 0.4844,
+          "deforestation_year_fractions": {
+            "0": 0.4375,
+            "1987": 0.0156,
+            "1989": 0.0625,
+            "1991": 0.0781,
+            "1993": 0.0312,
+            "1998": 0.1094,
+            "1999": 0.0469,
+            "2000": 0.0156,
+            "2010": 0.0469,
+            "2011": 0.0469,
+            "2013": 0.0156,
+            "2017": 0.0156,
+            "2024": 0.0781
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "placed_at": "2026-09-01T23:10:53+00:00",
+    "placed_from": {
+      "jrc_tmf_deforestation_year": "/tmp/tpos-share/JRC_TMF_DEFORESTATION_YEAR/PARQUET_S2",
+      "icf_honduras_cafe_2020": "/tmp/tpos-share/ICF_HONDURAS/PARQUET_S2/cafe_2020"
+    },
+    "field_level": 15,
+    "cutoff_year": 2020,
+    "candidates_examined": 2974323,
+    "note": "Boundaries are S2 cells chosen because the ingested rasters already tell each story inside them. The values in 'expected' are computed from the stores, not asserted."
+  }
+}

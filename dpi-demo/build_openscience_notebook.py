@@ -186,22 +186,37 @@ particular fields is exact because they *are* S2 cells.
 """)
 
 code("""
+HUB_TOKEN, TOKEN_SOURCE = od.hub_token()
+print(f"hub token: {'yes' if HUB_TOKEN else 'no'} - {TOKEN_SOURCE}")
+""")
+
+code("""
 GEOIDS = {}
 
 with od.step("register boundaries -> GeoID") as s:
-    if STACK['ar2-node']['up']:
+    if STACK['ar2-node']['up'] and HUB_TOKEN:
         for feature in FIELDS:
             name = feature['properties']['name']
+            # {'wkt': ...} is the only body this route takes, and the GeoID comes
+            # back under 'Geo Id'. Both were wrong here until 2026-09-02.
             r = od.post(f"{od.NODE_URL}/register-field-boundary",
-                        json={'geometry': feature['geometry']})
-            GEOIDS[name] = (r.json() or {}).get('geo_id') if r.ok else None
-            print(f"  {name:22} {GEOIDS[name] or 'refused: ' + r.text[:80]}")
+                        token=HUB_TOKEN,
+                        json={'wkt': od.wkt_of(feature['geometry']), 'field_name': name})
+            GEOIDS[name] = od.geoid_of(r)
+            print(f"  {name:22} {GEOIDS[name] or f'refused HTTP {r.status_code}: ' + r.text[:70]}")
+        minted = [n for n, g in GEOIDS.items() if g]
+        if not minted:
+            raise RuntimeError(
+                "AR2 is up and authenticated but minted no GeoID. That is a failure to "
+                "report, not a reason to fall back to labels."
+            )
     else:
-        od.local(s, "AR2 not reachable; using a labelled local identifier, not a GeoID")
+        why = "AR2 not reachable" if not STACK['ar2-node']['up'] else f"no hub token ({TOKEN_SOURCE})"
+        od.local(s, f"{why}; using a labelled local identifier, not a GeoID")
         for feature in FIELDS:
             p = feature['properties']
             GEOIDS[p['name']] = f"local-cell:{p['s2_token']}"
-        print("  AR2 is not up, so no GeoID was minted. These are labels, not GeoIDs:")
+        print(f"  {why}, so no GeoID was minted. These are labels, not GeoIDs:")
         for name, label in GEOIDS.items():
             print(f"  {name:22} {label}")
 """)
@@ -232,7 +247,7 @@ SUBJECT = FIELDS[1]['properties']['name']   # the field cleared after the cut-of
 with od.step("screen without a grant (neighbourhood scope)") as s:
     if NODE_UP:
         COARSE_SCREEN = od.get(f"{od.TERRAPIPE_OS_URL}/screen/{GEOIDS[SUBJECT]}",
-                               token=os.environ.get('HUB_TOKEN')).json()
+                               token=HUB_TOKEN).json()
     elif CAN_RUN_LOCALLY:
         od.local(s, "computed in process from the mirrored rasters")
         import s2sphere
@@ -276,16 +291,28 @@ code("""
 GRANT = os.environ.get('FIELD_GRANT')
 
 with od.step("Pancake issues a field-access grant") as s:
-    if STACK['pancake']['up'] and STACK['ar2-node']['up']:
-        target = GEOIDS[FIELDS[1]['properties']['name']]
-        r = od.post(f"{od.PANCAKE_URL}/grants",
-                    json={'geoids': [target], 'purpose': 'eudr-screening'},
-                    token=os.environ.get('HUB_TOKEN'))
-        GRANT = (r.json() or {}).get('credential') if r.ok else None
-        print("  grant issued" if GRANT else f"  refused: {r.status_code} {r.text[:120]}")
+    if STACK['pancake']['up'] and HUB_TOKEN and all(GEOIDS.values()):
+        # Two calls: a grant is issued against a field list, so the list is
+        # created first and its list_id names the subject. There is no
+        # POST /grants -- the notebook asked for one until 2026-09-02 and read
+        # the 404 as the grant being unavailable.
+        GRANT, how = od.field_grant(
+            [GEOIDS[f['properties']['name']] for f in FIELDS],
+            token=HUB_TOKEN,
+            purpose='eudr-screening',
+        )
+        print(f"  {'grant issued' if GRANT else 'no grant'}: {how}")
+        if not GRANT:
+            raise RuntimeError(f"Pancake is up and authenticated but issued no grant: {how}")
     else:
-        od.skip(s, "Pancake is not up; the screens below use the field cover directly")
-        print("  Without Pancake there is no grant to present.")
+        if not STACK['pancake']['up']:
+            why = "Pancake is not up"
+        elif not HUB_TOKEN:
+            why = f"there is no hub token ({TOKEN_SOURCE})"
+        else:
+            why = "no GeoID was minted, so there is nothing to grant access to"
+        od.skip(s, f"{why}; the screens below use the field cover directly")
+        print(f"  {why}, so there is no grant to present.")
         print("  The screens that follow read the field's own cover, which is what a")
         print("  grant would have unlocked. In a real deployment the grant is what")
         print("  authorises that, and its absence is why the previous cell was coarse.")
@@ -321,7 +348,7 @@ with od.step("screen each field") as s:
         for feature in FIELDS:
             name = feature['properties']['name']
             SCREENS[name] = od.get(f"{od.TERRAPIPE_OS_URL}/screen/{GEOIDS[name]}",
-                                   token=os.environ.get('HUB_TOKEN'), grant=GRANT).json()
+                                   token=HUB_TOKEN, grant=GRANT).json()
     elif CAN_RUN_LOCALLY:
         od.local(s, "computed in process from the mirrored rasters")
         from terrapipe_os.screen import screen_deforestation
@@ -430,7 +457,7 @@ with od.step("NDVI for a field") as s:
     if NODE_UP:
         name = FIELDS[0]['properties']['name']
         r = od.get(f"{od.TERRAPIPE_OS_URL}/data/{GEOIDS[name]}/ndvi_sentinel2",
-                   token=os.environ.get('HUB_TOKEN'), grant=GRANT, params={'time': '2026-08-21'})
+                   token=HUB_TOKEN, grant=GRANT, params={'time': '2026-08-21'})
         print(od.brief(r.json()))
     else:
         od.skip(s, "the NDVI store is on the TerraPipe network share, not mounted here")
@@ -439,7 +466,7 @@ with od.step("NDVI for a field") as s:
 with od.step("GFS forecast for a field") as s:
     if NODE_UP:
         name = FIELDS[0]['properties']['name']
-        r = od.get(f"{od.TERRAPIPE_OS_URL}/forecast/{GEOIDS[name]}", token=os.environ.get('HUB_TOKEN'))
+        r = od.get(f"{od.TERRAPIPE_OS_URL}/forecast/{GEOIDS[name]}", token=HUB_TOKEN)
         print(od.brief(r.json()))
     else:
         od.skip(s, "the GFS store is on the TerraPipe network share, not mounted here")
