@@ -89,6 +89,29 @@ every BITE records which it was, so the demo is meaningful before any grant
 exists and sharper once one does. Set `PANCAKE_GRANT_<geoid>` on the TAP worker
 to hand it a grant for a specific field.
 
+### The notebook
+
+[`openscience_dpi_demo.ipynb`](openscience_dpi_demo.ipynb) walks the EUDR path
+end to end for four Honduran fields: boundary to GeoID, consent, screen, BITE,
+and a DDS-ready GeoJSON out the other side. It is meant to be *read* as much as
+run, so its committed output is from a real execution.
+
+Two files rather than one, deliberately:
+
+- `build_openscience_notebook.py` is the source. Prose and code sit together in
+  one reviewable Python file, instead of a JSON diff full of escaped newlines.
+- `openscience_dpi_demo.ipynb` is generated from it, with
+  `python build_openscience_notebook.py --run`.
+
+Edit the builder, not the notebook. **Never hand-edit the committed output** —
+its whole value is that it records what actually happened.
+
+Every step prints `LIVE` (ran against the stack), `LOCAL` (stack down, but the
+mirrored rasters were read in process), `SKIPPED` or `FAILED`, and the last cell
+prints a ledger of all of them. Nothing invents a reading to keep the narrative
+moving, so the skipped lines are an honest list of what a given run did not
+demonstrate. `make openscience` closes most of them.
+
 ## Version pinning (important)
 
 The demo was validated against AR hub/node tag **`v0.9-review`** (RS256 hub tokens +
