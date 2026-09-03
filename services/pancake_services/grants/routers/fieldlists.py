@@ -11,6 +11,7 @@ from pancake_services.grants.auth import get_current_user, get_db
 from pancake_services.grants.mealstore import MealStore
 from pancake_services.grants.models import FieldList, User
 from pancake_services.grants.schemas import FieldListCreate, FieldListOut, InclusionProofOut, HoldersRequest, HoldersResponse
+from pancake_services.grants.ar2_client import internal_headers
 
 router = APIRouter(prefix="/fieldlists", tags=["fieldlists"])
 
@@ -31,10 +32,7 @@ def _owned(db: Session, user: User, list_id: str) -> FieldList:
 
 def _fetch_geoids(request: Request, list_id: str) -> list[str]:
     ar2_url = request.app.state.settings.ar2_node_url
-    import os
-    headers = {"x-pancake-internal": os.getenv("AR2_INTERNAL_SHARED_SECRET", "true")}
-    if "authorization" in request.headers:
-        headers["authorization"] = request.headers["authorization"]
+    headers = internal_headers(request)
     try:
         resp = httpx.get(f"{ar2_url}/list-artifact/{list_id}", headers=headers, timeout=10)
         resp.raise_for_status()

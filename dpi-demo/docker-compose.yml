@@ -54,6 +54,13 @@ services:
     environment:
       JWKS_URL: ${HUB_JWKS_URL:-http://hub:8000/.well-known/jwks.json}
       AR_TRUSTED_ISSUER_PUBKEY: /run/secrets/issuer_pub.pem
+      # Must equal the value on pancake-grants. AR2 guards artifact reads with
+      # it, and Pancake reads a list artifact in order to issue the first grant
+      # for that list, so it has no grant to present and must be trusted by
+      # name. Unset on either side means unset: AR2 with no secret trusts
+      # nobody, and the refusal it returns is a deliberate 404 that looks
+      # exactly like a missing artifact. That cost an afternoon on 2026-09-03.
+      AR2_INTERNAL_SHARED_SECRET: ${AR2_INTERNAL_SHARED_SECRET:-demo-internal-secret-not-for-production}
     ports:
       - "8001:8001"
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
@@ -138,6 +145,9 @@ services:
       HUB_URL: ${HUB_URL:-http://hub:8000}
       STATUS_LIST_URI: ${STATUS_LIST_URI:-http://pancake-grants:8100/grants/status-list}
       PANCAKE_REQUIRE_GRANT_FOR_WEATHER: ${PANCAKE_REQUIRE_GRANT_FOR_WEATHER:-false}
+      AR2_NODE_URL: ${AR2_NODE_URL:-http://node:8001}
+      # The same value as on the node above; see the note there.
+      AR2_INTERNAL_SHARED_SECRET: ${AR2_INTERNAL_SHARED_SECRET:-demo-internal-secret-not-for-production}
     ports:
       - "8100:8100"
 

@@ -77,13 +77,27 @@ def test_the_mirrors_are_mounted_read_only(compose):
 
 
 def test_the_worker_is_handed_the_variable_the_vendor_file_is_gated_on(compose):
-    """The typo class this test exists for: two spellings of one variable."""
+    """The typo class this test exists for: two spellings of one variable.
+
+    A gate may name one variable or several; a vendor is enabled only when all
+    of them are set, so all of them have to reach the worker.
+    """
     worker_env = _environment(compose["services"]["pancake-tap"])
     vendors = yaml.safe_load(VENDORS.read_text())["vendors"]
 
-    gated = {v["vendor_name"] for v in vendors if v.get("enabled_if_env") == GATE}
+    gated = {}
+    for vendor in vendors:
+        gate = vendor.get("enabled_if_env")
+        if not gate:
+            continue
+        names = [gate] if isinstance(gate, str) else list(gate)
+        if GATE in names:
+            gated[vendor["vendor_name"]] = names
     assert gated, f"no vendor is gated on {GATE}; this test is checking nothing"
-    assert GATE in worker_env, f"{GATE} is never passed to the worker, so {gated} can never run"
+
+    for name, names in gated.items():
+        missing = [n for n in names if n not in worker_env]
+        assert not missing, f"{name} is gated on {missing}, which the worker never receives"
 
 
 def test_every_variable_the_vendor_file_needs_is_supplied_by_the_worker(compose):

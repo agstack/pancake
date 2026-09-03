@@ -18,6 +18,7 @@ from pancake_services.grants import sdjwt, statuslist_service
 from pancake_services.grants.auth import get_current_user, get_db
 from pancake_services.grants.mealstore import MealStore
 from pancake_services.grants.models import FieldList, Grant, User
+from pancake_services.grants.ar2_client import internal_headers
 from pancake_services.grants.schemas import (
     GrantIssueRequest,
     GrantOut,
@@ -103,10 +104,7 @@ def issue_grant(
     }
     # Fetch geoids from AR2 since they are no longer stored in Pancake
     ar2_url = request.app.state.settings.ar2_node_url
-    import os
-    headers = {"x-pancake-internal": os.getenv("AR2_INTERNAL_SHARED_SECRET", "true")}
-    if "authorization" in request.headers:
-        headers["authorization"] = request.headers["authorization"]
+    headers = internal_headers(request)
     try:
         resp = httpx.get(f"{ar2_url}/list-artifact/{body.list_id}", headers=headers, timeout=10)
         resp.raise_for_status()

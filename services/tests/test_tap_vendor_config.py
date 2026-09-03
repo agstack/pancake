@@ -35,7 +35,9 @@ def node_configured(monkeypatch):
     monkeypatch.delenv("TERRAPIPE_SECRET", raising=False)
 
 
-def test_the_demo_config_is_present_and_parses():
+def test_the_demo_config_is_present_and_parses(monkeypatch):
+    for _v in ("TERRAPIPE_OS_URL", "TERRAPIPE_OS_CLIENT_ID", "TERRAPIPE_OS_CLIENT_SECRET"):
+        monkeypatch.delenv(_v, raising=False)
     assert CONFIG.is_file(), CONFIG
     assert load_enabled_vendors(str(CONFIG)), "the seed vendor is always enabled"
 
@@ -115,3 +117,43 @@ def test_no_grant_is_needed_to_start_and_one_is_picked_up_when_present(node_conf
 
     monkeypatch.setenv(vendor["metadata"]["grant_env_template"].format(geoid=geoid), "grant-jwt")
     assert adapter.grant_for(geoid, {}) == "grant-jwt"
+
+
+def test_a_node_url_without_credentials_skips_the_vendor_rather_than_failing_the_load(monkeypatch):
+    """The state Rajat's box was in on 2026-09-03, and what it used to cost.
+
+    A terrapipe-os node was running and TERRAPIPE_OS_URL was set. The hub client
+    credentials that go with it were not, because the node had been reached with
+    a personal token instead. The vendor was gated on the URL alone, so it passed
+    the gate, and interpolation then raised on ${TERRAPIPE_OS_CLIENT_ID} -- which
+    is a hard error for the whole vendor file, taking the seed vendor and the
+    offline demo path down with it.
+
+    Half-configured must be skipped, not fatal.
+    """
+    monkeypatch.setenv("TERRAPIPE_OS_URL", "http://a-node:8200")
+    monkeypatch.delenv("TERRAPIPE_OS_CLIENT_ID", raising=False)
+    monkeypatch.delenv("TERRAPIPE_OS_CLIENT_SECRET", raising=False)
+
+    names = {v["vendor_name"] for v in load_enabled_vendors(str(CONFIG))}
+
+    assert not (names & OPEN_SCIENCE), "a node without credentials must not be scheduled"
+    assert "seed" in names, "and it must not take the rest of the file down with it"
+
+
+def test_the_demo_config_parses_whatever_is_in_the_ambient_environment(monkeypatch):
+    """Deterministic in both directions, because it used to pass or fail by accident.
+
+    Run on a laptop that happened to export TERRAPIPE_OS_URL, this file failed;
+    run in CI, it passed. A test whose result depends on the shell it inherits
+    is not reporting on the code.
+    """
+    for var in ("TERRAPIPE_OS_URL", "TERRAPIPE_OS_CLIENT_ID", "TERRAPIPE_OS_CLIENT_SECRET"):
+        monkeypatch.delenv(var, raising=False)
+    assert load_enabled_vendors(str(CONFIG)), "the seed vendor is always enabled"
+
+    monkeypatch.setenv("TERRAPIPE_OS_URL", "http://a-node:8200")
+    monkeypatch.setenv("TERRAPIPE_OS_CLIENT_ID", "id")
+    monkeypatch.setenv("TERRAPIPE_OS_CLIENT_SECRET", "secret")
+    fully = {v["vendor_name"] for v in load_enabled_vendors(str(CONFIG))}
+    assert OPEN_SCIENCE <= fully

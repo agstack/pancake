@@ -19,6 +19,20 @@ from pancake_services.grants.issuer import IssuerIdentity, generate_keypair_pem
 from pancake_services.grants.testkit.fake_ar2 import fake_ar2_node
 
 
+@pytest.fixture(autouse=True)
+def ar2_internal_secret(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Pancake's server-to-server identity to AR2, which most tests need set.
+
+    Autouse because Pancake refuses to call AR2 for list members without it, and
+    that refusal is the point: it replaced a default of the string "true" that
+    turned an unset variable into a 404 from another service. The tests that
+    exercise the refusal delete it again.
+    """
+    secret = "test-internal-secret"
+    monkeypatch.setenv("AR2_INTERNAL_SHARED_SECRET", secret)
+    return secret
+
+
 def _b64url_uint(n: int) -> str:
     data = n.to_bytes((n.bit_length() + 7) // 8, "big")
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()

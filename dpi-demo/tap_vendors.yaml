@@ -49,7 +49,9 @@ vendors:
   # metadata.grant_env_template), where absent means coarse rather than fatal.
   - vendor_name: terrapipe-os-deforestation
     adapter_class: pancake_services.tap.adapters.terrapipe_os.DeforestationAdapter
-    enabled_if_env: TERRAPIPE_OS_URL
+    # Every variable this vendor needs, so a node configured without hub
+    # client credentials skips this vendor rather than failing the whole load.
+    enabled_if_env: [TERRAPIPE_OS_URL, TERRAPIPE_OS_CLIENT_ID, TERRAPIPE_OS_CLIENT_SECRET]
     base_url: ${TERRAPIPE_OS_URL}
     auth_method: bearer_token
     timeout: 120
@@ -72,7 +74,9 @@ vendors:
 
   - vendor_name: terrapipe-os-ndvi
     adapter_class: pancake_services.tap.adapters.terrapipe_os.VegetationIndexAdapter
-    enabled_if_env: TERRAPIPE_OS_URL
+    # Every variable this vendor needs, so a node configured without hub
+    # client credentials skips this vendor rather than failing the whole load.
+    enabled_if_env: [TERRAPIPE_OS_URL, TERRAPIPE_OS_CLIENT_ID, TERRAPIPE_OS_CLIENT_SECRET]
     base_url: ${TERRAPIPE_OS_URL}
     auth_method: bearer_token
     timeout: 120
@@ -93,7 +97,9 @@ vendors:
 
   - vendor_name: terrapipe-os-weather
     adapter_class: pancake_services.tap.adapters.terrapipe_os.WeatherForecastAdapter
-    enabled_if_env: TERRAPIPE_OS_URL
+    # Every variable this vendor needs, so a node configured without hub
+    # client credentials skips this vendor rather than failing the whole load.
+    enabled_if_env: [TERRAPIPE_OS_URL, TERRAPIPE_OS_CLIENT_ID, TERRAPIPE_OS_CLIENT_SECRET]
     base_url: ${TERRAPIPE_OS_URL}
     auth_method: bearer_token
     timeout: 120

@@ -161,7 +161,7 @@ def services() -> dict[str, dict[str, Any]]:
     checks = {
         "hub": (HUB_URL, "/.well-known/jwks.json"),
         "ar2-node": (NODE_URL, "/docs"),
-        "pancake": (PANCAKE_URL, "/health"),
+        "pancake": (PANCAKE_URL, "/healthz"),
         "terrapipe-os": (TERRAPIPE_OS_URL, "/health"),
     }
     out = {}
@@ -428,6 +428,31 @@ def geoid_of(response: requests.Response) -> str | None:
     return None
 
 
+def _why_the_grant_failed(response: requests.Response) -> str:
+    """Translate the one refusal that does not say what it means.
+
+    AR2 guards a list-artifact read with ``AR2_INTERNAL_SHARED_SECRET`` and, on
+    a caller it cannot place, returns a 404 that deliberately hides whether the
+    artifact exists. Pancake relays that verbatim. What an operator then reads
+    is "404 Not Found" for a list artifact that exists, under exactly the id
+    just asked for, on a stack where every service is healthy -- which sends
+    them looking for a missing artifact for as long as it takes to notice the
+    variable. It took an afternoon on 2026-09-03.
+    """
+    body = response.text[:400]
+    looks_like_the_secret = response.status_code == 502 and "list-artifact" in body and "404" in body
+    if looks_like_the_secret:
+        return (
+            "AR2 would not return the list members. Almost always this is "
+            "AR2_INTERNAL_SHARED_SECRET: set it to the same value on the AR2 node and on "
+            "Pancake and restart both. AR2 guards artifact reads with it, Pancake needs to "
+            "read the list in order to issue the first grant for it, and AR2 refuses an "
+            "unrecognised caller with a 404 that is indistinguishable from a missing "
+            f"artifact. Underlying response: HTTP {response.status_code} {body[:200]}"
+        )
+    return f"HTTP {response.status_code} {body[:200]}"
+
+
 def field_grant(geo_ids: list[str], token: str, *, purpose: str = "open-science demo") -> tuple[str | None, str]:
     """A field-access credential for these GeoIDs, and how it went.
 
@@ -463,7 +488,7 @@ def field_grant(geo_ids: list[str], token: str, *, purpose: str = "open-science 
         },
     )
     if not issued.ok:
-        return None, f"the grant was refused: HTTP {issued.status_code} {issued.text[:160]}"
+        return None, f"the grant was refused: {_why_the_grant_failed(issued)}"
     credential = (issued.json() or {}).get("credential")
     if not credential:
         return None, f"the grant came back without a credential: {issued.text[:160]}"

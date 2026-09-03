@@ -27,12 +27,31 @@ from pancake_services.tap.runtime import TAPRuntime, VendorSchedule, schedule_fr
 logger = logging.getLogger("pancake.tap.worker")
 
 
-def _enabled(vendor_raw: Dict[str, Any]) -> bool:
-    """A vendor is skipped if its ``enabled_if_env`` variable is empty/unset."""
+def _gates(vendor_raw: Dict[str, Any]) -> List[str]:
     gate = vendor_raw.get("enabled_if_env")
     if not gate:
-        return True
-    return bool(os.environ.get(gate, "").strip())
+        return []
+    return [gate] if isinstance(gate, str) else list(gate)
+
+
+def _missing_gates(vendor_raw: Dict[str, Any]) -> List[str]:
+    return [name for name in _gates(vendor_raw) if not os.environ.get(name, "").strip()]
+
+
+def _enabled(vendor_raw: Dict[str, Any]) -> bool:
+    """A vendor is skipped unless every variable in ``enabled_if_env`` is set.
+
+    A list, not just a string, because interpolation runs only on vendors that
+    pass this gate and raises on any unset ``${VAR}``. A vendor gated on one
+    variable but referencing three is therefore fatal to the whole worker as
+    soon as that one is set -- which is what happened on 2026-09-03, when a
+    node URL was configured without the hub client credentials that go with it,
+    and the entire vendor config failed to load rather than that one vendor
+    being skipped.
+
+    Half-configured is skipped, and says which variable is missing.
+    """
+    return not _missing_gates(vendor_raw)
 
 
 def load_enabled_vendors(config_path: str) -> List[Dict[str, Any]]:
@@ -42,8 +61,8 @@ def load_enabled_vendors(config_path: str) -> List[Dict[str, Any]]:
     vendors: List[Dict[str, Any]] = []
     for vendor_raw in raw.get("vendors", []):
         if not _enabled(vendor_raw):
-            logger.info("skipping vendor %s (gate %s is empty)",
-                        vendor_raw.get("vendor_name"), vendor_raw.get("enabled_if_env"))
+            logger.info("skipping vendor %s: %s not set",
+                        vendor_raw.get("vendor_name"), ", ".join(_missing_gates(vendor_raw)))
             continue
         vendors.append(_interpolate(vendor_raw))
     return vendors
