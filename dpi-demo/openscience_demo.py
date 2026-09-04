@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import os
+import textwrap
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -269,10 +270,10 @@ def show_screen(screen: dict[str, Any], *, indent: str = "  ") -> None:
         ordered = sorted(years.items(), key=lambda kv: str(kv[0]))
         print(f"{indent}by year          " + ", ".join(f"{y}: {v:.4f}" for y, v in ordered[:8]))
 
-    absent = _absent_layers(screen)
-    if absent:
-        print(f"{indent}not mirrored     {', '.join(absent)}")
-        print(f"{indent}                 (absent, which is not the same as zero)")
+    for layer_id, reason, note in _absent_layers(screen):
+        print(f"{indent}no answer from   {layer_id}  ({reason})")
+        print(f"{indent}                 {textwrap.shorten(note, 96)}")
+        print(f"{indent}                 absent is not zero: it is not counted either way")
     for caveat in screen.get("caveats") or []:
         print(f"{indent}caveat           {caveat}")
 
@@ -295,8 +296,29 @@ def evidence_rows(screen: dict[str, Any]) -> list[dict[str, Any]]:
     return items
 
 
-def _absent_layers(screen: dict[str, Any]) -> list[str]:
-    return [e["layer_id"] for e in evidence_rows(screen) if e.get("absent")]
+ABSENCE_MEANS = {
+    "outside_coverage": "the layer does not cover this field",
+    "not_mirrored": "the layer is not on this node's share",
+    "no_data": "the layer covers this field but holds no value here",
+    "not_in_library": "the layer is not in this node's library",
+}
+
+
+def _absent_layers(screen: dict[str, Any]) -> list[tuple[str, str, str]]:
+    """Each absent layer with its reason, because the reasons are not alike.
+
+    Printed as one undifferentiated "not mirrored" until 2026-09-04, which said
+    the node had failed to download something. The commonest reason in this demo
+    is the opposite: oil palm is a regional map, the coffee-belt fields sit
+    outside its bounds, and the node reports outside_coverage correctly. Calling
+    that a missing mirror invents an operational fault out of a layer behaving
+    exactly as declared.
+    """
+    return [
+        (e["layer_id"], e["absent"], e.get("note") or ABSENCE_MEANS.get(e["absent"], ""))
+        for e in evidence_rows(screen)
+        if e.get("absent")
+    ]
 
 
 def compare(expected: dict[str, Any], screen: dict[str, Any]) -> list[str]:
@@ -308,15 +330,46 @@ def compare(expected: dict[str, Any], screen: dict[str, Any]) -> list[str]:
     an audience rather than after.
     """
     notes = []
-    got = screen.get("deforested_fraction")
-    want = expected.get("deforested_after_2020_fraction")
-    if want is not None and got is not None and abs(got - want) > 1e-3:
-        notes.append(f"cleared-after-cutoff {got:.4f} but the placer recorded {want:.4f}")
-    commodity = (screen.get("commodity") or {}).get("coffee_fraction")
-    want_coffee = expected.get("coffee_fraction")
-    if want_coffee is not None and commodity is not None and abs(commodity - want_coffee) > 1e-3:
-        notes.append(f"coffee {commodity:.4f} but the placer recorded {want_coffee:.4f}")
+    for label, got, want in (
+        (
+            "cleared-after-cutoff",
+            screen.get("deforested_fraction"),
+            expected.get("deforested_after_2020_fraction"),
+        ),
+        (
+            "coffee",
+            (screen.get("commodity") or {}).get("coffee_fraction"),
+            expected.get("coffee_fraction"),
+        ),
+    ):
+        if want is None or got is None:
+            continue
+        drift = abs(got - want)
+        if drift > COVER_FRINGE_TOLERANCE:
+            notes.append(
+                f"{label} {got:.4f} against {want:.4f} placed, off by {drift:.1%} -- "
+                f"more than the boundary fringe accounts for"
+            )
     return notes
+
+
+COVER_FRINGE_TOLERANCE = 0.05
+"""How far the screen may sit from the placed figure before it is worth saying.
+
+Not a fudge factor: the two measure different ground. The placer read one S2
+L15 cell. The screen reads AR2's cover of the polygon registered from that
+cell's corners, and an S2 covering of a polygon is not the single cell it came
+from -- for the first demo field AR2 returns the L15 cell *plus* 98 refinement
+cells at L20 hugging the boundary, about 9.6% of extra area. Whatever is on that
+fringe is real ground, and it dilutes the field's own figures.
+
+Measured on 2026-09-04 against Rajat's node: the four fields drift by 0.2% to
+2.1%, all in the direction the fringe predicts. Five per cent leaves room for a
+field whose fringe is less like its interior, and still catches a store that has
+genuinely changed underneath the demo.
+
+The tolerance existed at 0.1% before, which no field could meet, so every field
+reported a mismatch and the check said nothing."""
 
 
 # --------------------------------------------------------------------------

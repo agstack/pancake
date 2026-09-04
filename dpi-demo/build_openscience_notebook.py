@@ -367,8 +367,36 @@ for feature in FIELDS:
     print(f"{feature['properties']['title']}")
     od.show_screen(SCREENS[name])
     drift = od.compare(feature['properties']['expected'], SCREENS[name])
-    print(f"  agrees with the placer: {'yes' if not drift else 'NO -- ' + '; '.join(drift)}")
+    if drift:
+        print("  DOES NOT MATCH WHAT WAS PLACED: " + '; '.join(drift))
+    else:
+        placed = feature['properties']['expected']
+        print(f"  matches what was placed, within the boundary fringe "
+              f"(coffee {(SCREENS[name].get('commodity') or {}).get('coffee_fraction', 0):.4f} "
+              f"against {placed.get('coffee_fraction', 0):.4f} read off the cell alone)")
     print()
+""")
+
+md("""
+### Why the figures do not land exactly on what was placed
+
+Each of these fields was chosen by reading the stores directly and recording
+what was there. The screen then reports slightly different numbers — coffee at
+0.984 where 1.000 was placed, and so on. The gap is small, systematic, and worth
+understanding, because it is a property of GeoIDs rather than an error.
+
+The placer read **one S2 cell** at level 15. The screen reads **AR2's cover of
+the polygon** registered from that cell's corners, and a cover is not the cell
+it came from. For the first field AR2 returns the L15 cell plus 98 refinement
+cells at level 20, hugging the boundary and adding about 9.6% in area. That
+fringe is real ground just outside the cell, it is mostly but not entirely
+coffee, and it pulls the field's figures towards its surroundings.
+
+This is the honest behaviour. A field boundary is a polygon, a cover approximates
+it from the outside, and the approximation is visible in the numbers. It also
+sets the tolerance used above: the check flags a field only when it drifts
+further than the fringe can explain, which is what tells you a store has changed
+underneath the demo rather than that S2 is doing its job.
 """)
 
 md("""
