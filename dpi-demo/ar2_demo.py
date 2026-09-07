@@ -46,6 +46,7 @@ from openscience_demo import (  # noqa: F401
     have_folium,
     hub_token,
     mode,
+    revoke,
     skip,
     step,
 )

@@ -235,11 +235,11 @@ def test_the_gate_composition_is_described_as_the_code_has_it() -> None:
 
 
 def test_the_undemonstrated_tier_is_named_as_undemonstrated() -> None:
-    """Tier 3 needs accreditation, which a notebook cannot arrange for itself."""
+    """Tier 3 is not shown, and the notebook has to say so rather than imply it."""
     built = _built()
 
     assert "tier 3" in built.lower()
-    assert "not accredited" in built
+    assert "cannot be demonstrated" in built
 
 
 # --------------------------------------------------------------------------
@@ -429,3 +429,37 @@ def _fake_chain(tr):
     """A chain built without touching the network."""
     tr.pool_through_pancake = lambda members, name, token: (f"list-{name[:8]}", "ok")
     return tr.build_chain(GEO_IDS, "token")
+
+
+# --------------------------------------------------------------------------
+# AG-016: the authority path cannot be demonstrated, and why matters
+# --------------------------------------------------------------------------
+
+
+def test_the_reason_tier_three_is_missing_is_not_blamed_on_this_account() -> None:
+    """'This account is not accredited' implies another account could be.
+
+    None can. There is no issuance route in any running service, which is a
+    finding about the deployment rather than a limitation of the demo.
+    """
+    built = " ".join(_built().split())
+
+    assert "not because this account happens to lack accreditation" in built
+    assert "no account can have it" in built
+    assert "AG-016" in built
+
+
+def test_the_mocked_tier_three_tests_are_named_as_mocked() -> None:
+    """The gate opening is covered. What is behind it is not."""
+    built = " ".join(_built().split())
+
+    assert "_resolve_holders" in built
+    assert "patched out" in built or "mocks out" in built
+
+
+def test_what_tier_three_would_add_is_stated() -> None:
+    """Otherwise 'tier 3 missing' reads as a version number rather than a capability."""
+    built = " ".join(_built().split())
+
+    assert "resolves the holders" in built or "holder resolution" in built
+    assert "audit" in built

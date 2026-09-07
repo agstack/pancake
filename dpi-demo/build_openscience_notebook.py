@@ -285,7 +285,7 @@ import importlib, importlib.util, subprocess
 # up in some other environment. cwd is _HOME because requirements.txt refers to
 # ../services relative to itself.
 _NEEDED = {"requests": "requests", "httpx": "httpx", "folium": "folium",
-           "s2sphere": "s2sphere", "mcp": "mcp"}
+           "plotly": "plotly", "s2sphere": "s2sphere", "mcp": "mcp"}
 _missing = [p for module, p in _NEEDED.items() if importlib.util.find_spec(module) is None]
 if _missing:
     print(f"dependencies     installing {', '.join(_missing)} into this kernel")
@@ -838,6 +838,49 @@ with od.step("read three vintages of the national map") as s:
 if VINTAGES:
     print()
     od.show_vintages(VINTAGES)
+""")
+
+md("""
+### The same decade, for all four fields
+
+One field's three readings are a table. All four fields' readings are a
+picture, and the picture is the point: the colours are what the *notebook*
+grouped the publisher's labels into, because the three vintages use three
+different legends and the raw labels do not line up across years.
+
+That grouping is an editorial act, and it is worth naming as one. Hover any
+square for the label the publisher actually used.
+""")
+
+code("""
+TREND = []
+
+with od.step("read every vintage for every field") as s:
+    if NODE_UP and GRANT and any(GEOIDS.values()):
+        BY_FIELD = {name: od.vintages(geo_id, HUB_TOKEN, GRANT)
+                    for name, geo_id in GEOIDS.items() if geo_id}
+        TREND = od.trend_rows(BY_FIELD)
+        READ = sum(1 for row in TREND if row['label'] != 'no reading')
+        print(f"  {READ} of {len(TREND)} field-vintage readings returned a class")
+        if not READ:
+            od.empty(s, "no vintage returned a reading for any field")
+    else:
+        od.skip(s, "no grant, or the node is not answering")
+""")
+
+code("""
+if TREND and od.have_plotly():
+    od.trend_chart(TREND).show()
+elif TREND:
+    print("plotly is not installed; the readings are in TREND")
+""")
+
+md("""
+**This is the time trend this notebook can honestly draw, and it is not the
+one that would sell it.** Three points a decade apart, of a categorical
+variable, from a publisher who changed their legend twice. The chart a
+reviewer wants is a season of NDVI — a curve per field, greening and
+senescing — and section 9 explains why it is not here.
 """)
 
 md("""
@@ -1566,6 +1609,45 @@ reported that vegetation and weather had been demonstrated when neither had.
 
 code("""
 print(od.LEDGER.checklist())
+""")
+
+md("""
+### Against what this notebook set out to cover
+
+The ledger says what ran. This says what was *asked for*, which is a different
+list and a shorter one. Four categories of public data were in scope:
+deforestation rasters, pest and disease, weather, and satellite vegetation.
+
+Read from the ledger rather than written by hand, so it cannot tick a category
+the run did not demonstrate.
+""")
+
+code("""
+od.show_coverage(od.coverage_scoreboard(od.LEDGER))
+""")
+
+md("""
+**One of four.** Deforestation is thoroughly demonstrated — four products,
+three national vintages, a disagreement between them, and a screen that refuses
+to call an incompletely measured field clean. The other three are not, and they
+fail in two different ways.
+
+*Weather and satellite* have layers. Both are declared, both report `mirrored:
+true`, and both return no data for every field tried, across several date
+ranges, while a positive control on the same node returns 200. That is an
+ingest or a read-path defect rather than a design gap, it is **AG-013**, and it
+is the single largest hole in this notebook: NDVI is what would have carried the
+time trend, and GFS is what would have carried weather.
+
+*Pest and disease* is different and worse. There is no layer to mount. The
+public occurrence records that exist — GBIF for coffee leaf rust and berry borer
+— resolve to a district or a municipality, not to a field, and a field-level
+answer built from them would be an interpolation wearing a reading's clothes.
+Recorded as **AG-013b**. Nothing here is blocked on Rajat; it is blocked on the
+data not existing.
+
+That is the honest scoreboard, and a demo that showed the first row and moved
+on would be selling rather than reviewing.
 """)
 
 md("""

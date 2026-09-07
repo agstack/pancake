@@ -2602,3 +2602,157 @@ def the_coffee_field(geo_ids: dict[str, str], token: str, grant: str | None) -> 
         if top.lower() in {c.lower() for c in COFFEE_LABELS} and share > 0.5:  # noqa: PLR2004
             return geo_id, f"{name}, which ICF's 2024 map calls {top} over {share:.0%} of its area"
     return "", "no demo field is majority coffee in the 2024 national map"
+
+
+# ==========================================================================
+# The time trend, and an honest scoreboard of what the demo set out to cover
+# ==========================================================================
+
+
+def have_plotly() -> bool:
+    import importlib.util  # noqa: PLC0415
+
+    return importlib.util.find_spec("plotly") is not None
+
+
+CLASS_COLOURS = {
+    "forest": "#2d6a4f",
+    "coffee": "#9c6644",
+    "agriculture": "#c9a227",
+    "other": "#8d99ae",
+    "no reading": "#e5e5e5",
+}
+
+
+def _class_family(label: str) -> str:
+    """Group a publisher's label into something a colour can mean.
+
+    The vintages use three different legends, so the raw labels do not line up
+    across years -- which is the codebook trap, and exactly why a chart of raw
+    labels would show change that is not there. Grouping to a family is what
+    makes the three years comparable at all, and the grouping is this
+    notebook's editorial act rather than the publisher's.
+    """
+    if not label:
+        return "no reading"
+    lowered = label.lower()
+    if "caf" in lowered or "coffee" in lowered:
+        return "coffee"
+    if "bosque" in lowered or "forest" in lowered:
+        return "forest"
+    if any(word in lowered for word in ("agr", "cultiv", "pasto", "palma")):
+        return "agriculture"
+    return "other"
+
+
+def trend_rows(readings_by_field: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    """One row per field per vintage, with the label and the family it grouped to."""
+    rows = []
+    for field_name, readings in readings_by_field.items():
+        for reading in readings:
+            classes = reading.get("classes") or {}
+            label = ""
+            if classes:
+                # The dominant class: the one covering most of the field.
+                label = max(classes.items(), key=lambda kv: kv[1])[0]
+                # resolve_label also reports whether this notebook had to name
+                # the code itself, which the vintage section shows and the
+                # chart does not; only the label is wanted here.
+                label, _ = resolve_label(reading["layer_id"], label)
+            rows.append({
+                "field": field_name,
+                "year": reading["year"],
+                "label": label or "no reading",
+                "family": _class_family(label),
+                "why": reading.get("why", ""),
+            })
+    return rows
+
+
+def trend_chart(rows: list[dict[str, Any]]):
+    """A decade of the national map, one strip per field.
+
+    Not a line chart, because the readings are categorical: what changes is
+    which class the publisher assigned, not a number that can go up or down.
+    """
+    if not have_plotly() or not rows:
+        return None
+    import plotly.graph_objects as go  # noqa: PLC0415
+
+    fields = sorted({row["field"] for row in rows})
+    years = sorted({row["year"] for row in rows})
+    figure = go.Figure()
+
+    for family, colour in CLASS_COLOURS.items():
+        marked = [row for row in rows if row["family"] == family]
+        if not marked:
+            continue
+        figure.add_trace(go.Scatter(
+            x=[row["year"] for row in marked],
+            y=[row["field"] for row in marked],
+            mode="markers", name=family,
+            marker={"size": 26, "symbol": "square", "color": colour,
+                    "line": {"width": 1, "color": "#333"}},
+            text=[row["label"] for row in marked],
+            hovertemplate="%{y}<br>%{x}: %{text}<extra></extra>",
+        ))
+
+    figure.update_layout(
+        title="What the national map called each field, by vintage",
+        xaxis={"title": "ICF vintage", "type": "category",
+               "categoryorder": "array", "categoryarray": years},
+        yaxis={"title": "", "categoryorder": "array", "categoryarray": fields[::-1]},
+        template="simple_white", height=90 + 60 * len(fields),
+        legend={"title": "grouped class"},
+    )
+    return figure
+
+
+@dataclass
+class Coverage:
+    """One of the data categories this notebook set out to demonstrate."""
+
+    category: str
+    layers: str
+    outcome: str
+    detail: str
+
+
+def coverage_scoreboard(ledger: "Ledger") -> list[Coverage]:
+    """What was asked for against what the run could actually show.
+
+    Written from the ledger rather than by hand, so it cannot claim a category
+    the run did not demonstrate. The four categories are the ones this notebook
+    was scoped to: deforestation rasters, pest and disease, weather, and
+    satellite vegetation.
+    """
+    def outcome_of(fragment: str) -> tuple[str, str]:
+        for entry in ledger.steps:
+            if fragment in entry.name:
+                return entry.outcome, entry.detail
+        return SKIPPED, "no step in this run covered it"
+
+    deforestation, why_def = outcome_of("screen each field")
+    ndvi, why_ndvi = outcome_of("NDVI")
+    weather, why_weather = outcome_of("GFS")
+
+    return [
+        Coverage("deforestation rasters", "JRC TMF, Hansen, ESA WorldCover, ICF Honduras",
+                 deforestation, why_def or "read for every field"),
+        Coverage("pest and disease", "none mounted", SKIPPED,
+                 "no layer of field-resolution pest or disease observations exists to "
+                 "mount; see AG-013b"),
+        Coverage("weather", "gfs_forecast", weather, why_weather),
+        Coverage("satellite vegetation", "ndvi_sentinel2", ndvi, why_ndvi),
+    ]
+
+
+def show_coverage(scoreboard: list[Coverage]) -> None:
+    """The scoreboard, with the gaps as visible as the successes."""
+    print(f"  {'category':24} {'outcome':9} {'layers':44}")
+    for row in scoreboard:
+        print(f"  {row.category:24} {row.outcome:9} {row.layers[:44]}")
+    print()
+    for row in scoreboard:
+        if row.outcome not in (LIVE, LOCAL):
+            print(f"  {row.category}: {row.detail}")

@@ -2161,3 +2161,149 @@ def test_the_draft_says_it_is_a_draft() -> None:
 
     assert "AG-014" in built
     assert "nobody who does this work has been asked yet" in built
+
+
+# --------------------------------------------------------------------------
+# Alignment with what the notebook was asked to cover
+# --------------------------------------------------------------------------
+
+
+def test_the_scoreboard_reads_the_ledger_rather_than_a_hand_written_list() -> None:
+    """The failure mode: a category ticked because it was planned, not run."""
+    od = _module()
+    ledger = od.Ledger()
+    ledger.record("screen each field", od.LIVE)
+    ledger.record("NDVI for a field", od.EMPTY, "no data")
+    ledger.record("GFS forecast for a field", od.EMPTY, "no forecast")
+
+    scored = {row.category: row.outcome for row in od.coverage_scoreboard(ledger)}
+
+    assert scored["deforestation rasters"] == od.LIVE
+    assert scored["satellite vegetation"] == od.EMPTY
+    assert scored["weather"] == od.EMPTY
+
+
+def test_a_category_the_run_demonstrated_is_not_marked_missing() -> None:
+    """The check has to move in both directions or it is a constant."""
+    od = _module()
+    ledger = od.Ledger()
+    ledger.record("NDVI for a field", od.LIVE)
+
+    scored = {row.category: row.outcome for row in od.coverage_scoreboard(ledger)}
+
+    assert scored["satellite vegetation"] == od.LIVE
+
+
+def test_a_category_no_step_covered_is_not_silently_passed() -> None:
+    od = _module()
+
+    scored = {row.category: row.outcome for row in od.coverage_scoreboard(od.Ledger())}
+
+    assert set(scored.values()) == {od.SKIPPED}
+
+
+def test_pest_and_disease_is_reported_as_having_no_layer_at_all() -> None:
+    """Different from AG-013: nothing to ingest, not something un-ingested."""
+    od = _module()
+
+    pest = next(row for row in od.coverage_scoreboard(od.Ledger())
+                if row.category == "pest and disease")
+
+    assert "AG-013b" in pest.detail
+    assert pest.layers == "none mounted"
+
+
+def test_the_gaps_are_printed_and_not_only_counted() -> None:
+    od = _module()
+    ledger = od.Ledger()
+    ledger.record("screen each field", od.LIVE)
+    shown = io.StringIO()
+
+    with contextlib.redirect_stdout(shown):
+        od.show_coverage(od.coverage_scoreboard(ledger))
+
+    text = shown.getvalue()
+    assert "pest and disease" in text
+    assert "AG-013b" in text
+
+
+def test_the_trend_groups_labels_because_the_legends_do_not_line_up() -> None:
+    """Raw labels charted across vintages would show change that is not there."""
+    od = _module()
+
+    rows = od.trend_rows({"a field": [
+        {"year": "2018", "layer_id": "icf_honduras_forest_cover_2018",
+         "classes": {"Bosque Latifoliado": 0.9}},
+        {"year": "2024", "layer_id": "icf_honduras_forest_cover_2024",
+         "classes": {"Bosque latifoliado humedo": 0.9}},
+    ]})
+
+    assert {row["family"] for row in rows} == {"forest"}, (
+        "two spellings of the same class grouped differently"
+    )
+
+
+def test_the_trend_keeps_the_publishers_own_label_beside_the_grouping() -> None:
+    """The grouping is this notebook's editorial act and must stay inspectable."""
+    od = _module()
+
+    rows = od.trend_rows({"a field": [
+        {"year": "2024", "layer_id": "icf_honduras_forest_cover_2024",
+         "classes": {"Cafe": 0.9}},
+    ]})
+
+    assert rows[0]["label"] == "Cafe"
+    assert rows[0]["family"] == "coffee"
+
+
+def test_a_vintage_with_no_reading_is_not_charted_as_a_class() -> None:
+    """An absent year drawn as a category is absence turned into a finding."""
+    od = _module()
+
+    rows = od.trend_rows({"a field": [
+        {"year": "2014", "layer_id": "icf_honduras_forest_cover_2014",
+         "classes": {}, "why": "no data"},
+    ]})
+
+    assert rows[0]["family"] == "no reading"
+    assert rows[0]["label"] == "no reading"
+
+
+def test_a_bare_code_is_resolved_before_it_is_grouped() -> None:
+    """unlabelled_14 grouped as 'other' would hide the coffee it stands for."""
+    od = _module()
+
+    rows = od.trend_rows({"a field": [
+        {"year": "2014", "layer_id": "icf_honduras_forest_cover_2014",
+         "classes": {"unlabelled_14": 0.9}},
+    ]})
+
+    assert rows[0]["family"] == "coffee", f"resolved to {rows[0]['label']}"
+
+
+def test_the_dominant_class_is_the_one_charted() -> None:
+    od = _module()
+
+    rows = od.trend_rows({"a field": [
+        {"year": "2024", "layer_id": "icf_honduras_forest_cover_2024",
+         "classes": {"Cafe": 0.2, "Bosque Latifoliado": 0.7}},
+    ]})
+
+    assert rows[0]["family"] == "forest"
+
+
+def test_the_notebook_says_the_trend_it_can_draw_is_not_the_one_that_matters() -> None:
+    """Three categorical points a decade apart is not a season of NDVI."""
+    built = " ".join((DEMO / "build_openscience_notebook.py").read_text().split())
+
+    assert "is not the one that would sell it" in built
+    assert "season of NDVI" in built
+
+
+def test_plotly_is_declared_where_the_setup_cell_will_install_it() -> None:
+    """A chart cell that needs a dependency the setup does not fetch just skips."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+    requirements = (DEMO / "requirements.txt").read_text()
+
+    assert '"plotly": "plotly"' in built
+    assert "plotly>=" in requirements

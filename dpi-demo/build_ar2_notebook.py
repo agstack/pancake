@@ -475,6 +475,40 @@ code("""
 ar.disclosure_map(DISCLOSED[0][2], DISCLOSED[1][2]) if len(DISCLOSED) > 1 else None
 """)
 
+md("""
+### And taken back
+
+A slip is a thing you hold, so it is a thing that can be withdrawn. Revocation
+publishes the credential's own identifier to a public status list the node
+checks on every read. It does not need the holder's cooperation, it does not
+need the credential to be found and deleted, and it does not need the field to
+be re-registered or renamed.
+
+The same credential is presented again below. Nothing about it has changed: it
+has not expired and it is byte-for-byte what worked a moment ago.
+""")
+
+code("""
+with ar.step("revoke the slip and present the very same one again") as s:
+    if len(DISCLOSED) > 1 and CONSENT.credential and CONSENT.jti:
+        done, why = ar.revoke(CONSENT.jti, HUB_TOKEN)
+        print(f"  revoked  {why}\\n")
+        AFTER = ar.what_the_name_reveals(NAMED.geo_id, HUB_TOKEN, CONSENT.credential)
+        ar.show_what_is_revealed([*DISCLOSED, ("the same slip, revoked", *AFTER)])
+        print()
+        if ar.vertices_disclosed(AFTER[1]) == ar.vertices_disclosed(DISCLOSED[1][2]):
+            print("  The revoked slip still returned the exact boundary. That is a")
+            print("  defect, not a demonstration, and it is what this step exists to")
+            print("  catch.")
+        else:
+            print("  Back to the grid cell. Note the status code: a revoked slip does")
+            print("  not error, it degrades. The caller is not told they were cut off,")
+            print("  which is the same answer a stranger gets and leaks nothing about")
+            print("  who used to have access.")
+    else:
+        ar.skip(s, "there is no slip to revoke")
+""")
+
 # ==========================================================================
 # 6. Federation
 # ==========================================================================

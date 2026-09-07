@@ -367,9 +367,24 @@ accredited authority credential, additionally resolves the holders — which is
 the part that reaches into other companies' trading relationships, and the part
 that is written to an audit log every time it is used.
 
-This run is tier 1. Nothing here can demonstrate tier 3, because this account
-is not accredited and issuing accreditation is the hub operator's decision, not
-something a notebook can arrange for itself.
+This run is tier 1, and **tier 3 cannot be demonstrated at all** — not because
+this account happens to lack accreditation, but because no account can have it.
+There is no route in any running service that issues an authority credential.
+Pancake's issuer exposes `authority_pubkey()`, documented as its trust anchor
+for *verifying* them, and mints only field grants; neither service's API has a
+matching path.
+
+AR2's own tests reach tier 3 by signing a credential inside the test file with
+a test key. All three of those tests do it with `_resolve_holders` and the MEAL
+audit chain patched out — which are the two behaviours that make tier 3
+different from tier 1. So what is covered is that the gate opens, not that
+anything behind it works.
+
+Recorded as **AG-016**. It matters more than a missing demo: identity
+disclosure to accredited authorities, always audited, is the goal the deck puts
+on its own scorecard, and it is the reason trace-forward is a separate call
+from trace-back. That promise currently has no issuance path and no unmocked
+test.
 """)
 
 # ==========================================================================
@@ -595,10 +610,11 @@ cooperation.
 **AG-015**, above: `reverse` answers most of the trace-forward question with
 only a login. Open, and the fix is to apply the check that already exists.
 
-**Tier 3 is undemonstrated.** Accredited trace-forward, holder resolution and
-the authority audit log are all implemented and none of them are exercised
-here, because this account is not accredited and a notebook cannot accredit
-itself. What is shown is tier 1.
+**AG-016**: tier 3 is not demonstrated and cannot be. Accredited
+trace-forward, holder resolution and the authority audit log are implemented in
+AR2 and reachable by nothing, because no service issues the credential that
+opens them, and every test that reaches tier 3 mocks out the two behaviours
+that distinguish it. What is shown is tier 1.
 
 **The chain is synthetic.** The four boundaries are real coordinates in
 Honduras and the GeoIDs are really minted, but no coffee was milled and no

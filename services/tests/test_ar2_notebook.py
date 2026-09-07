@@ -507,3 +507,74 @@ def test_a_collision_is_reported_however_much_the_shapes_overlap() -> None:
         original, [(control, ar.Naming("aaa111", "Resolved to existing field", 200))]
     )
     assert any("collision" in n for n in notes)
+
+
+# --------------------------------------------------------------------------
+# Withdrawing a slip. The deck's third goal says grants are "instantly
+# revocable", and a notebook that only ever issues one does not show it.
+# --------------------------------------------------------------------------
+
+
+def test_the_slip_is_revoked_and_the_same_one_presented_again() -> None:
+    """A revocation call returning 200 says nothing about whether the door shut.
+
+    The only thing that demonstrates revocation is re-presenting the identical
+    credential, so the test is that the notebook does exactly that rather than
+    minting a fresh one or asking without a slip at all.
+    """
+    built = BUILDER.read_text()
+    section = built[built.index("revoke the slip and present the very same one again"):]
+    section = section[:section.index('""")')]
+
+    assert "CONSENT.credential" in section, "the revoked slip is not the one re-presented"
+    assert "ar.revoke" in section
+    assert "consent_for" not in section, "a fresh slip is minted instead of reusing the old"
+
+
+def test_the_three_answers_are_shown_in_one_table() -> None:
+    """Before, after, and after-revocation only mean something side by side."""
+    built = BUILDER.read_text()
+    section = built[built.index("revoke the slip and present the very same one again"):]
+    section = section[:section.index('""")')]
+
+    assert "DISCLOSED" in section
+    assert "the same slip, revoked" in section
+
+
+def test_a_revoked_slip_that_still_works_is_called_a_defect() -> None:
+    """The outcome the step exists to catch, not the one it expects."""
+    built = BUILDER.read_text()
+    section = built[built.index("revoke the slip and present the very same one again"):]
+    section = section[:section.index('""")')]
+
+    # The sentence, not the word. "defect" alone survived deleting the line
+    # that names the failure, because it recurs on the line after.
+    assert "still returned the exact boundary" in section
+    assert "vertices_disclosed" in section, "the two answers are not actually compared"
+
+
+def test_the_degrade_is_explained_rather_than_shown_as_an_error() -> None:
+    """A revoked slip returns 200 and L0. Read as success that is misleading."""
+    built = " ".join(BUILDER.read_text().split())
+
+    # Split across two print calls in the source, so the phrase is matched in
+    # halves rather than whole.
+    assert "a revoked slip does" in built
+    assert "not error, it degrades" in built
+
+
+def test_revocation_reaches_the_notebook_from_the_support_module() -> None:
+    """It lives in the open-science module; ar2_demo has to re-export it."""
+    ar = _module()
+
+    assert hasattr(ar, "revoke")
+
+
+def test_the_notebook_covers_the_decks_first_three_goals() -> None:
+    """Slide 2 lists six. This notebook is the walkthrough for the first three;
+    lists, tracing and compliance export belong to the other two notebooks."""
+    built = BUILDER.read_text()
+
+    assert "derived from" in built or "computed" in built     # one name per field
+    assert "countries" in built                               # federated by country
+    assert "revoke" in built                                  # revocable permissions

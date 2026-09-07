@@ -15,6 +15,12 @@ requests>=2.31
 # want them.
 folium>=0.16
 
+# The time trend. A land-cover class per field per vintage is a categorical
+# series, which plotly renders inline in Jupyter with no browser plumbing and
+# no static image toolchain. Every chart cell checks for it the way the map
+# cells check for folium.
+plotly>=5.20
+
 # S2 geometry, for drawing cells. Used only to turn a cell token into corners.
 # The identifiers themselves are minted by AR2, never here.
 s2sphere>=0.2.5
