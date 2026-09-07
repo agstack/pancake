@@ -261,7 +261,14 @@ if _HOME is None:
     \"\"\").strip())
 
 sys.path.insert(0, str(_HOME))
+import importlib
 import openscience_demo as od
+
+# Python caches modules, so a kernel that imported this before the file changed
+# keeps running the old code, and the symptom is an AttributeError for a helper
+# that is plainly there in the source. Reloading costs nothing and removes a
+# whole class of confusing failure while the notebook is under active work.
+od = importlib.reload(od)
 
 print(f"support module   {_HOME}")
 print(f"                 {od.forbid_local_backend()}")

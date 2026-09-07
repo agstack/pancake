@@ -630,3 +630,46 @@ def test_the_clone_url_is_the_real_remote() -> None:
 
     url = remote.stdout.strip()
     assert url in setup, f"the setup section does not clone {url}"
+
+
+def test_the_notebook_reloads_its_support_module() -> None:
+    """Python caches modules; a long-lived kernel runs code that no longer exists.
+
+    Reported on 2026-09-06 as ``AttributeError: module 'openscience_demo' has no
+    attribute 'have_folium'`` for a function plainly present in the file. The
+    kernel had imported the module before the map helpers were added, and
+    ``import openscience_demo`` is a no-op once it is in sys.modules -- so the
+    notebook silently ran the old code and blamed the source.
+    """
+    first = _notebook_cells()[0]
+
+    assert "importlib.reload(od)" in first, (
+        "the first cell must reload the support module, or an edited helper "
+        "will not reach a kernel that has already imported it"
+    )
+
+
+def test_reloading_does_not_stack_import_hooks() -> None:
+    """The guard identifies itself by name because reload rebinds the class.
+
+    ``isinstance(hook, _NoLocalBackend)`` is False against an instance created
+    before a reload, so the already-installed check would miss and every reload
+    would add another hook to sys.meta_path.
+    """
+    import importlib  # noqa: PLC0415
+
+    od = _module()
+
+    def installed() -> int:
+        return sum(1 for hook in sys.meta_path if type(hook).__name__ == "_NoLocalBackend")
+
+    before = installed()
+    od.forbid_local_backend()
+    once = installed()
+
+    for _ in range(3):
+        od = importlib.reload(od)
+        od.forbid_local_backend()
+
+    assert once <= before + 1
+    assert installed() == once, "each reload stacked another copy of the guard"

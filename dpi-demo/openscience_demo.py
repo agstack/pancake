@@ -288,7 +288,11 @@ def forbid_local_backend() -> str:
     about code a reader has to go and verify. This makes the claim enforceable:
     if any cell below reaches for the backend, it raises.
     """
-    already_blocked = any(isinstance(hook, _NoLocalBackend) for hook in sys.meta_path)
+    # By name rather than isinstance: the notebook reloads this module, which
+    # rebinds _NoLocalBackend to a new class object, and an isinstance check
+    # against the old one would miss the hook already installed and stack a
+    # second copy on every reload.
+    already_blocked = any(type(hook).__name__ == "_NoLocalBackend" for hook in sys.meta_path)
     installed = False
     if not already_blocked:
         try:
