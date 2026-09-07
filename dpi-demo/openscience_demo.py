@@ -248,6 +248,22 @@ def mode(stack: dict[str, dict[str, Any]]) -> str:
         "mode: SKIPPED. Nothing here computes a reading in this process, "
         "by design, so there is no substitute for the node."
     )
+
+    # Third case, and the likeliest one for somebody's first run: demo.env was
+    # copied from the example and never edited, so the addresses are the
+    # template's angle-bracketed placeholders. Saying "this looks like a real
+    # outage" about <node-host> sends them to ask an operator why the deployment
+    # is down.
+    unfilled = [name for name in down if "<" in stack[name]["url"]]
+    if unfilled:
+        return (
+            f"{head}\n\n"
+            f"{SETTINGS_FILE.name} still has the example's placeholders in it "
+            f"({stack[unfilled[0]]['url']}).\n"
+            "Replace the angle-bracketed parts with the addresses of a real deployment\n"
+            "and restart the kernel. See README-openscience.md."
+        )
+
     local = ("localhost", "127.0.0.1")
     if all(any(host in stack[name]["url"] for host in local) for name in down):
         return (

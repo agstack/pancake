@@ -674,3 +674,89 @@ def test_reloading_does_not_stack_import_hooks() -> None:
 
     assert once <= before + 1
     assert installed() == once, "each reload stacked another copy of the guard"
+
+
+def test_unedited_placeholders_are_not_reported_as_an_outage() -> None:
+    """The likeliest first run: demo.env copied from the example, never edited.
+
+    Telling someone that <node-host> "looks like a real outage" sends them to
+    ask an operator why the deployment is down. Found by running the README's
+    own instructions verbatim in a fresh clone.
+    """
+    od = _module()
+    stack = {
+        name: {"url": f"http://<{name}-host>:8200", "up": False, "detail": "ConnectionError"}
+        for name in ("hub", "ar2-node", "pancake", "terrapipe-os")
+    }
+
+    said = od.mode(stack)
+
+    assert "placeholder" in said
+    assert "outage" not in said
+    assert "README-openscience.md" in said
+
+
+def test_the_three_reasons_a_run_cannot_start_are_told_apart() -> None:
+    """Placeholders, no settings at all, and a genuine outage need different fixes."""
+    od = _module()
+
+    def stack(url: str) -> dict:
+        return {
+            name: {"url": url, "up": False, "detail": "ConnectionError"}
+            for name in ("hub", "ar2-node", "pancake", "terrapipe-os")
+        }
+
+    placeholders = od.mode(stack("http://<node-host>:8200"))
+    unconfigured = od.mode(stack("http://localhost:8200"))
+    outage = od.mode(stack("http://66.220.3.83:8200"))
+
+    assert len({placeholders, unconfigured, outage}) == 3, "two of these give the same advice"
+    assert "placeholder" in placeholders
+    assert "demo.env" in unconfigured and "placeholder" not in unconfigured
+    assert "outage" in outage
+
+
+def test_the_readme_covers_every_step_of_getting_started() -> None:
+    """The page someone is handed. A missing step is a stranger stuck."""
+    readme = DEMO / "README-openscience.md"
+    assert readme.is_file(), "README-openscience.md must exist"
+    text = readme.read_text()
+
+    for step in (
+        "python3 --version",
+        "git clone",
+        "-m venv .venv",
+        "source .venv/bin/activate",
+        "Activate.ps1",
+        "pip install -r requirements.txt",
+        "ipykernel install",
+        "demo.env",
+        "jupyter lab openscience_dpi_demo.ipynb",
+        "3.10",
+        "Set-ExecutionPolicy",
+    ):
+        assert step in text, f"README-openscience.md never mentions {step}"
+
+
+def test_the_readme_troubleshoots_every_failure_we_have_actually_hit() -> None:
+    """Each of these cost somebody a debugging session; none should cost a second."""
+    text = (DEMO / "README-openscience.md").read_text()
+
+    for symptom in (
+        "AttributeError",  # stale module in a long-lived kernel
+        "ModuleNotFoundError",  # support module not found from a foreign cwd
+        "localhost",  # never told which deployment
+        "folium",  # maps missing
+        "SKIPPED",  # honest degradation, not a fault
+    ):
+        assert symptom in text, f"the README does not cover {symptom}"
+
+
+def test_the_readme_points_at_the_same_requirements_the_notebook_installs() -> None:
+    """Two sets of install instructions that can disagree is one too many."""
+    text = (DEMO / "README-openscience.md").read_text()
+
+    assert "requirements.txt" in text
+    assert "pip install folium" not in text, (
+        "naming a single package here duplicates requirements.txt and will drift"
+    )
