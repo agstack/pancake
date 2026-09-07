@@ -204,6 +204,25 @@ for feature in FIELDS:
     print()
 """)
 
+md("""
+Where they are. Satellite imagery underneath, because the point of these four
+is what is on the ground: click any field for its story, and switch to the
+street layer with the control at the top right.
+
+The boundaries are square because they *are* S2 cells — these are test fields
+placed on cells the rasters had something to say about, not surveyed farms.
+Everything downstream treats them as ordinary polygons, and a real boundary
+from a mapping tool goes through the same path unchanged, which is what
+section 10 does.
+""")
+
+code("""
+if od.have_folium():
+    display(od.field_map(FIELDS))
+else:
+    print(od.maps_unavailable())
+""")
+
 # ==========================================================================
 # 3. GeoID
 # ==========================================================================
@@ -395,6 +414,20 @@ for feature in FIELDS:
 """)
 
 md("""
+The same four fields again, now coloured by the verdict each one came back
+with. Red is deforestation detected, green is not detected. Click through for
+the fraction cleared and how much of the field was actually measured — a
+verdict without its coverage is half the answer.
+""")
+
+code("""
+if od.have_folium() and SCREENS:
+    display(od.field_map(FIELDS, screens=SCREENS))
+elif not od.have_folium():
+    print(od.maps_unavailable())
+""")
+
+md("""
 ### Why the figures do not land exactly on what was placed
 
 Each of these fields was chosen by reading the stores directly and recording
@@ -437,6 +470,30 @@ if COARSE_SCREEN and SUBJECT in SCREENS:
     print(f"  {'neighbourhood':14} {hood['deforested_fraction']:>19.4f} {hood['verdict']:>26}")
     ratio = field['deforested_fraction'] / hood['deforested_fraction']
     print(f"\\n  The finding is {ratio:.0f}x more concentrated in the field than in the cell around it.")
+""")
+
+md("""
+And the same thing as a picture, which is more convincing than the ratio.
+
+The dashed cell is what AR2 hands back for this GeoID when **no grant** is
+presented — asked of AR2 rather than derived here, so it is the registry's own
+disclosure. The solid shape inside it is the field, which AR2 releases **only**
+against a grant.
+
+Consent is not a switch on the answer. It is the difference between these two
+shapes, and every response says which one it is describing.
+""")
+
+code("""
+if od.have_folium() and SUBJECT in GEOIDS and HUB_TOKEN:
+    cell, why = od.masked_cell(GEOIDS[SUBJECT], HUB_TOKEN)
+    print(f"  {why}")
+    subject = next(f for f in FIELDS if f['properties']['name'] == SUBJECT)
+    display(od.consent_map(subject, neighbourhood_token=cell))
+elif not od.have_folium():
+    print(od.maps_unavailable())
+else:
+    print("  needs a GeoID and a hub token; both come from the cells above")
 """)
 
 # ==========================================================================

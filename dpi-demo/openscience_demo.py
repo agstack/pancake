@@ -418,6 +418,232 @@ def dds_export(
 # --------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------
+# maps
+# --------------------------------------------------------------------------
+#
+# A field, a verdict and a neighbourhood cell are all shapes on the ground, and
+# a table of decimals is a poor way to show a reader what "the screen covered
+# 80 km² instead of your 8 ha" means. Leaflet, via folium, because it renders
+# from the saved notebook without a running kernel or a widget extension.
+#
+# Optional throughout: a reader without folium gets the tables and a line saying
+# what to install. Nothing below is on the path to any reading.
+
+VERDICT_COLOUR = {
+    "deforestation_detected": "#c0392b",
+    "no_deforestation_detected": "#1e8449",
+    "inconclusive": "#b7791f",
+}
+
+SATELLITE = (
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+)
+SATELLITE_ATTRIBUTION = "Imagery: Esri, Maxar, Earthstar Geographics, GIS User Community"
+
+
+def have_folium() -> bool:
+    return importlib.util.find_spec("folium") is not None
+
+
+def maps_unavailable() -> str:
+    return (
+        "maps need folium, which is not installed here: pip install folium\n"
+        "  Everything else in this notebook runs without it."
+    )
+
+
+def s2_cell_ring(token: str) -> list[list[float]]:
+    """The four corners of an S2 cell as [lat, lon] pairs, for drawing.
+
+    Computed here rather than asked of the node: it is geometry, not a reading,
+    and s2sphere is the same library the node uses. Nothing about the *data*
+    is decided locally.
+    """
+    import s2sphere  # noqa: PLC0415
+
+    cell = s2sphere.Cell(s2sphere.CellId.from_token(token))
+    ring = []
+    for corner in range(4):
+        point = s2sphere.LatLng.from_point(cell.get_vertex(corner))
+        ring.append([point.lat().degrees, point.lng().degrees])
+    ring.append(ring[0])
+    return ring
+
+
+def _ring_of(feature: dict[str, Any]) -> list[list[float]]:
+    """A GeoJSON polygon's outer ring as [lat, lon], which is Leaflet's order.
+
+    GeoJSON positions are [lon, lat]; Leaflet wants [lat, lon]. Swapping them
+    silently puts Honduras in the Indian Ocean, so it happens in one place.
+    """
+    return [[lat, lon] for lon, lat in feature["geometry"]["coordinates"][0]]
+
+
+def _basemap(centre: list[float], zoom: int):
+    import folium  # noqa: PLC0415
+
+    canvas = folium.Map(location=centre, zoom_start=zoom, tiles=None, control_scale=True)
+    folium.TileLayer(SATELLITE, attr=SATELLITE_ATTRIBUTION, name="Satellite").add_to(canvas)
+    folium.TileLayer("OpenStreetMap", name="Street map").add_to(canvas)
+    return canvas
+
+
+def _centre(features: list[dict[str, Any]]) -> list[float]:
+    points = [point for feature in features for point in _ring_of(feature)]
+    return [
+        sum(p[0] for p in points) / len(points),
+        sum(p[1] for p in points) / len(points),
+    ]
+
+
+def field_map(features: list[dict[str, Any]], *, screens: dict[str, dict[str, Any]] | None = None):
+    """The demo fields on a satellite basemap, coloured by verdict if screened.
+
+    Before the screens exist this is a map of where the four fields are. After
+    they exist, pass ``screens`` and each field takes its verdict's colour, so
+    the result of the whole notebook is legible in one picture.
+    """
+    import folium  # noqa: PLC0415
+
+    canvas = _basemap(_centre(features), 8)
+    for feature in features:
+        name = feature["properties"]["name"]
+        screen = (screens or {}).get(name)
+        verdict = (screen or {}).get("verdict")
+        colour = VERDICT_COLOUR.get(verdict, "#2874a6")
+
+        lines = [
+            f"<b>{feature['properties']['title']}</b>",
+            f"{feature['properties']['area_ha']:.2f} ha",
+        ]
+        if screen:
+            lines += [
+                f"verdict: <b>{verdict}</b> ({screen.get('scope')} scope)",
+                f"cleared after {screen.get('cutoff_year')}: "
+                f"{screen.get('deforested_fraction', 0):.4f}",
+                f"measured: {screen.get('coverage_fraction', 0):.1%} of the field",
+            ]
+        else:
+            lines.append(f"<i>{feature['properties']['narrative'][:160]}</i>")
+
+        folium.Polygon(
+            locations=_ring_of(feature),
+            color=colour,
+            weight=2,
+            fill=True,
+            fill_opacity=0.35,
+            popup=folium.Popup("<br>".join(lines), max_width=320),
+            tooltip=feature["properties"]["title"],
+        ).add_to(canvas)
+
+    if screens:
+        _legend(canvas, {v: c for v, c in VERDICT_COLOUR.items() if v in
+                         {s.get("verdict") for s in screens.values()}})
+    folium.LayerControl(collapsed=True).add_to(canvas)
+    return canvas
+
+
+def masked_cell(geo_id: str, token: str) -> tuple[str | None, str]:
+    """The cell AR2 hands back for a GeoID when no grant is presented.
+
+    Asked of AR2 rather than derived, so the map below draws the disclosure the
+    registry actually made. Deriving it would produce the same token today and
+    would still be our claim about AR2's behaviour rather than AR2's behaviour.
+    """
+    try:
+        response = requests.get(
+            f"{NODE_URL}/fetch-field/{geo_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        return None, f"AR2 could not be reached: {exc.__class__.__name__}"
+    if not response.ok:
+        return None, f"AR2 answered HTTP {response.status_code}"
+    body = response.json() or {}
+    cell = (body.get("Geo Data") or {}).get("cell_token")
+    level = body.get("MaskingLevel")
+    if not cell:
+        return None, f"AR2 returned no cell token at masking level {level}"
+    return cell, f"AR2 masked this GeoID to {cell} at {level}"
+
+
+def consent_map(
+    feature: dict[str, Any],
+    *,
+    neighbourhood_level: int = 10,
+    neighbourhood_token: str | None = None,
+):
+    """One field, and the neighbourhood cell answered for without a grant.
+
+    This is the picture that makes disclosure tiering obvious: the ungranted
+    answer describes the large cell, the granted answer describes the small
+    shape inside it, and the ratio between the two areas is why a finding
+    inside one field nearly vanishes when diluted across the other.
+
+    Pass ``neighbourhood_token`` to draw the cell AR2 itself returned. Without
+    it the cell is derived from the field's own token, which lands in the same
+    place but is our arithmetic rather than the registry's answer.
+    """
+    import folium  # noqa: PLC0415
+    import s2sphere  # noqa: PLC0415
+
+    token = feature["properties"]["s2_token"]
+    if neighbourhood_token:
+        coarse = s2sphere.CellId.from_token(neighbourhood_token)
+        neighbourhood_level = coarse.level()
+    else:
+        coarse = s2sphere.CellId.from_token(token).parent(neighbourhood_level)
+    coarse_ring = s2_cell_ring(coarse.to_token())
+
+    canvas = _basemap(_centre([feature]), 11)
+    folium.Polygon(
+        locations=coarse_ring,
+        color="#b7791f",
+        weight=2,
+        dash_array="6",
+        fill=True,
+        fill_opacity=0.12,
+        tooltip=f"neighbourhood: S2 level {neighbourhood_level} cell (no grant needed)",
+    ).add_to(canvas)
+    folium.Polygon(
+        locations=_ring_of(feature),
+        color="#c0392b",
+        weight=2,
+        fill=True,
+        fill_opacity=0.5,
+        tooltip=f"the field: {feature['properties']['area_ha']:.2f} ha (needs a grant)",
+    ).add_to(canvas)
+    _legend(
+        canvas,
+        {
+            f"neighbourhood (L{neighbourhood_level}), answered without a grant": "#b7791f",
+            "the field, answered only with a grant": "#c0392b",
+        },
+    )
+    folium.LayerControl(collapsed=True).add_to(canvas)
+    return canvas
+
+
+def _legend(canvas, entries: dict[str, str]) -> None:
+    """A plain HTML legend. folium has no first-class one."""
+    import folium  # noqa: PLC0415
+
+    rows = "".join(
+        f'<div style="margin:2px 0"><span style="display:inline-block;width:12px;height:12px;'
+        f'background:{colour};margin-right:6px;vertical-align:middle"></span>{label}</div>'
+        for label, colour in entries.items()
+    )
+    canvas.get_root().html.add_child(
+        folium.Element(
+            f'<div style="position:fixed;bottom:24px;left:24px;z-index:9999;background:white;'
+            f'padding:8px 10px;border:1px solid #999;border-radius:4px;font:12px sans-serif">'
+            f"{rows}</div>"
+        )
+    )
+
+
 def show_screen(screen: dict[str, Any], *, indent: str = "  ") -> None:
     """Print a screen the way it should be read: verdict, then what qualifies it."""
     verdict = screen.get("verdict")

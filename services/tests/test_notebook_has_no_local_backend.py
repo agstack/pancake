@@ -39,6 +39,14 @@ def _notebook_code() -> str:
     return "\n".join("".join(c["source"]) for c in cells if c["cell_type"] == "code")
 
 
+def _notebook_cells() -> list[str]:
+    """Each code cell's source separately, for checks that are per-cell."""
+    if not NOTEBOOK.is_file():
+        pytest.skip(f"{NOTEBOOK} has not been generated")
+    cells = json.loads(NOTEBOOK.read_text())["cells"]
+    return ["".join(c["source"]) for c in cells if c["cell_type"] == "code"]
+
+
 def _imports(source: str) -> list[str]:
     """Every module name imported anywhere in ``source``, including inside functions."""
     found: list[str] = []
@@ -336,3 +344,86 @@ def test_an_expired_token_is_not_passed_on_as_if_it_were_good() -> None:
     assert od._expired(token(_time.time() - 60)) is True
     assert od._expired(token(_time.time() + 3600)) is False
     assert od._expired("not-a-jwt") is False, "let the services judge what we cannot read"
+
+
+# --------------------------------------------------------------------------
+# The maps
+# --------------------------------------------------------------------------
+
+HONDURAS = (-89.4, 12.9, -83.1, 16.6)  # lon/lat bounds, generous
+
+
+def _in_honduras(lat: float, lon: float) -> bool:
+    west, south, east, north = HONDURAS
+    return south <= lat <= north and west <= lon <= east
+
+
+def test_the_drawn_ring_is_in_honduras_not_the_indian_ocean() -> None:
+    """Leaflet takes [lat, lon]; GeoJSON stores [lon, lat].
+
+    Swapping them is the classic silent error: the map renders happily, and the
+    fields sit off the coast of Somalia. Nothing else in the notebook would
+    notice, because the screens key off GeoIDs rather than off what is drawn.
+    """
+    od = _module()
+
+    for feature in od.demo_fields():
+        for lat, lon in od._ring_of(feature):
+            assert _in_honduras(lat, lon), (
+                f"{feature['properties']['name']} drawn at {lat}, {lon}, "
+                "which is not Honduras -- the coordinate pair is probably swapped"
+            )
+
+
+def test_the_s2_cell_ring_lands_on_the_field_it_describes() -> None:
+    """The cell drawn under a field has to be the cell the field is in."""
+    od = _module()
+
+    for feature in od.demo_fields():
+        lon, lat = feature["properties"]["centroid"]
+        ring = od.s2_cell_ring(feature["properties"]["s2_token"])
+        lats = [point[0] for point in ring]
+        lons = [point[1] for point in ring]
+
+        assert min(lats) <= lat <= max(lats), "the field's centroid is outside its own S2 cell"
+        assert min(lons) <= lon <= max(lons), "the field's centroid is outside its own S2 cell"
+
+
+def test_the_ring_closes() -> None:
+    """An unclosed ring renders as a wedge rather than a field."""
+    od = _module()
+
+    for feature in od.demo_fields():
+        ring = od._ring_of(feature)
+        assert ring[0] == ring[-1], f"{feature['properties']['name']} is not a closed ring"
+
+
+def test_every_map_cell_checks_for_folium_first() -> None:
+    """A reader without folium gets the tables, not a traceback.
+
+    The maps are an aid to reading. Making them a hard dependency would mean a
+    missing optional package takes down the parts of the notebook that carry
+    the actual argument.
+    """
+    cells = [
+        source
+        for source in _notebook_cells()
+        if "od.field_map(" in source or "od.consent_map(" in source
+    ]
+    assert len(cells) == 3, f"expected three map cells, found {len(cells)}"
+
+    for source in cells:
+        assert "od.have_folium()" in source, f"a map cell does not check for folium:\n{source}"
+        assert "od.maps_unavailable()" in source, (
+            f"a map cell does not say what to install when folium is missing:\n{source}"
+        )
+
+
+def test_the_map_helpers_do_not_reach_the_backend() -> None:
+    """Geometry is computed from s2sphere; nothing about the data is local."""
+    od = _module()
+    source = Path(od.__file__).read_text()
+    start = source.index("def s2_cell_ring")
+    end = source.index("def _legend")
+
+    assert "terrapipe_os" not in source[start:end]
