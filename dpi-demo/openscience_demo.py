@@ -1272,6 +1272,99 @@ ABSENCE_MEANS = {
 }
 
 
+LAYER_NOTES = {
+    "ndvi_sentinel2": "Greenness, per date. How a field's vegetation moves through the year.",
+    "jrc_tmf_deforestation_year": (
+        "The year each pixel was first cleared, 1990-2025. This is the layer the EUDR "
+        "cut-off is applied to, and the primary evidence behind every verdict below."
+    ),
+    "jrc_tmf_degradation_year": "The year each pixel was first degraded, which is not clearing.",
+    "jrc_tmf_undisturbed_degraded": "Forest extent, split into undisturbed and degraded.",
+    "hansen_treecover_2000": (
+        "Percent canopy cover in the year 2000, the baseline most global "
+        "deforestation products are differenced against."
+    ),
+    "esa_worldcover": "Eleven classes of global land cover at 10 m: tree cover, cropland, built-up.",
+    "icf_honduras_forest_cover_2024": (
+        "Honduras's own national forest-cover map for 2024, with the publisher's legend."
+    ),
+    "icf_honduras_forest_cover_2018": (
+        "The 2018 edition. Its legend is not published, so its classes read as codes."
+    ),
+    "icf_honduras_forest_cover_2014": (
+        "The 2014 edition. Its legend is not published either."
+    ),
+    "icf_honduras_cafe_2020": (
+        "Where coffee is grown, nationally, in 2020. What makes a coffee claim checkable."
+    ),
+    "icf_honduras_palma_africana_2020": (
+        "Where oil palm is grown. A regional band across the north, not a national map, "
+        "which is why fields in the southern coffee belt get 'outside coverage' rather "
+        "than 'no palm'."
+    ),
+    "gfs_forecast": "NOAA's global weather forecast on a 0.25 degree grid.",
+}
+"""What each layer shows, in a sentence, for a reader who has not met it.
+
+Everything factual about a layer -- title, source, licence, extent -- is asked of
+the node. This is the one thing the node cannot supply, because it is editorial:
+why the layer is in this demo and what a reader should take from it. Layers the
+node lists and this dictionary does not know are printed as such rather than
+dropped, so the two cannot drift apart quietly.
+"""
+
+# The five layers Honduras's forestry authority publishes at
+# https://geoportal.icf.gob.hn/geoportal/main, mirrored here.
+ICF_GEOPORTAL = "https://geoportal.icf.gob.hn/geoportal/main"
+
+
+def library() -> tuple[list[dict[str, Any]], str]:
+    """Every layer this node serves, asked of the node.
+
+    Unauthenticated and needs no GeoID: the catalogue is public, and only a
+    reading about a particular field needs consent. That distinction is worth
+    seeing before any field exists.
+    """
+    try:
+        response = requests.get(f"{TERRAPIPE_OS_URL}/layers", timeout=20)
+    except requests.RequestException as exc:
+        return [], f"the node could not be reached: {exc.__class__.__name__}"
+    if not response.ok:
+        return [], f"the node answered HTTP {response.status_code}"
+    layers = response.json() or []
+    return layers, f"{len(layers)} layers, asked of {TERRAPIPE_OS_URL}"
+
+
+def show_library(layers: list[dict[str, Any]]) -> None:
+    """Print the catalogue grouped by who publishes it."""
+    if not layers:
+        print("  the node listed no layers")
+        return
+
+    by_source: dict[str, list[dict[str, Any]]] = {}
+    for layer in layers:
+        by_source.setdefault(layer.get("source") or "source not stated", []).append(layer)
+
+    for source, group in by_source.items():
+        print(f"\n{source}")
+        print(f"  licence: {group[0].get('licence')}")
+        for layer in group:
+            note = LAYER_NOTES.get(layer["layer_id"], "(not described in this notebook)")
+            print(f"\n  {layer['layer_id']}")
+            print(f"      {layer.get('title')}")
+            for line in textwrap.wrap(note, 74):
+                print(f"      {line}")
+            bbox = (layer.get("coverage") or {}).get("bbox")
+            extent = "declares no extent, so it is read wherever it has data"
+            if bbox:
+                west, south, east, north = bbox
+                extent = (
+                    "global" if east - west > WIDER_THAN_THE_MAP
+                    else f"{west:.2f},{south:.2f} to {east:.2f},{north:.2f}"
+                )
+            print(f"      extent: {extent}")
+
+
 def _absent_layers(screen: dict[str, Any]) -> list[tuple[str, str, str]]:
     """Each absent layer with its reason, because the reasons are not alike.
 

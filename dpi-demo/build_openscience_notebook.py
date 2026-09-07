@@ -331,6 +331,37 @@ print()
 print(od.mode(STACK))
 """)
 
+md("""
+### What this node holds
+
+Before any field exists, ask the node what it can talk about. This is a public
+catalogue: no token, no GeoID, no consent. Consent is needed to learn something
+about *a particular field*, not to find out what could be learned about one, and
+seeing that distinction here is the point of asking now.
+
+Five of these come from Honduras's own forestry authority, the Instituto de
+Conservación Forestal, published as downloads at
+[geoportal.icf.gob.hn](https://geoportal.icf.gob.hn/geoportal/main): the coffee
+and oil palm maps for 2020, and forest cover for 2024, 2018 and 2014. They are
+mirrored here rather than fetched live, so a reading does not depend on that
+site being up, and every reading reports the licence it came under. The ICF
+files carry no stated licence, which the node says plainly rather than guessing.
+
+The rest are global: the JRC's tropical moist forest products, which carry the
+deforestation evidence; Hansen tree cover for the year 2000 baseline; ESA
+WorldCover for land cover; Sentinel-2 NDVI; and NOAA's GFS forecast.
+
+Having both matters. A national map and a global one disagreeing about the same
+hectare is information, and the screen reports it as a second opinion rather
+than picking a winner.
+""")
+
+code("""
+LAYERS, why = od.library()
+print(why)
+od.show_library(LAYERS)
+""")
+
 # ==========================================================================
 # 2. The fields
 # ==========================================================================

@@ -17,6 +17,9 @@ import ast
 import collections
 import textwrap
 import os
+import io
+import contextlib
+import pathlib
 import re
 from urllib.parse import urlparse
 import json
@@ -1141,3 +1144,103 @@ def test_a_map_of_one_field_frames_the_field_not_the_cell_around_it() -> None:
     masked_height = max(p[0] for p in masked) - min(p[0] for p in masked)
     assert north - south < masked_height / 2, "the map is framed on the masked cell"
     assert north - south >= field_height, "the field does not fit in the frame"
+
+
+def test_every_layer_the_node_serves_is_described_or_named_as_undescribed() -> None:
+    """A catalogue that quietly omits an entry misrepresents the library.
+
+    The facts about a layer come from the node; the sentence saying what it is
+    for is the notebook's own, and the two live in different places. Anything
+    the node adds that this notebook has not met must show up as undescribed
+    rather than vanish.
+    """
+    od = _module()
+
+    catalogue = [
+        {"layer_id": "something_new", "title": "A layer added after this was written",
+         "source": "Somebody", "licence": "CC0", "coverage": {}},
+    ]
+
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        od.show_library(catalogue)
+    shown = printed.getvalue()
+
+    assert "something_new" in shown
+    assert "not described in this notebook" in shown, (
+        "an unknown layer is printed as though it were understood"
+    )
+
+
+def test_the_catalogue_describes_the_layers_the_demo_actually_leans_on() -> None:
+    """The three a reader has to understand to follow any verdict."""
+    od = _module()
+
+    for layer_id in (
+        "jrc_tmf_deforestation_year",
+        "icf_honduras_cafe_2020",
+        "icf_honduras_palma_africana_2020",
+    ):
+        assert layer_id in od.LAYER_NOTES, f"{layer_id} carries a verdict and is undescribed"
+        assert len(od.LAYER_NOTES[layer_id]) > 40, f"{layer_id} has a description that says nothing"
+
+
+def test_the_catalogue_is_asked_of_the_node_not_written_down() -> None:
+    """A hardcoded list is a list that is wrong the first time a layer is added."""
+    od = _module()
+    source = pathlib.Path(od.__file__).read_text()
+
+    body = source[source.index("def library("):source.index("def show_library(")]
+    assert "/layers" in body and "requests.get" in body, (
+        "the catalogue does not come from the node"
+    )
+
+    # The facts a reader would act on must not be invented here.
+    for invented in ('"licence":', '"source":', '"title":'):
+        assert invented not in body, f"library() fabricates {invented} instead of asking"
+
+
+def test_the_catalogue_needs_no_token_and_no_geoid() -> None:
+    """The point the section makes: a public library, private readings.
+
+    Consent is needed to learn something about a particular field, not to find
+    out what could be learned about one. If listing the library started
+    requiring a grant, the section's argument would be false.
+    """
+    od = _module()
+    source = pathlib.Path(od.__file__).read_text()
+    body = source[source.index("def library("):source.index("def show_library(")]
+
+    assert "Authorization" not in body, "listing the library asks for a token"
+    assert "grant" not in body.lower(), "listing the library asks for a grant"
+
+
+def test_the_notebook_credits_the_icf_geoportal_the_layers_came_from() -> None:
+    """Five of twelve layers are somebody's national mapping, downloaded from a site."""
+    od = _module()
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    assert "geoportal.icf.gob.hn" in built, "the ICF layers' origin is not named"
+    assert "geoportal.icf.gob.hn" in od.ICF_GEOPORTAL
+
+    icf = [layer for layer in od.LAYER_NOTES if layer.startswith("icf_honduras")]
+    assert len(icf) == 5, f"expected the five ICF geoportal downloads, found {icf}"
+
+
+def test_the_catalogue_does_not_repeat_the_nodes_broken_mirrored_flag() -> None:
+    """Fixed in terrapipe-os on 2026-09-06; a node not yet restarted still sends it.
+
+    ``mirrored`` was read off the layer definition, which is the same document on
+    every node and cannot know what any one node holds. The demo node reported
+    ``mirrored: false`` for ten of twelve layers while answering reads of them
+    with real data. Showing that to a reader would tell them the library is
+    empty when it is not.
+    """
+    od = _module()
+    source = pathlib.Path(od.__file__).read_text()
+    body = source[source.index("def show_library("):source.index("def _absent_layers(")]
+
+    assert "mirrored" not in body, (
+        "the catalogue prints the node's mirrored flag, which is wrong on any "
+        "node running a build from before the fix"
+    )
