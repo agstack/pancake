@@ -29,8 +29,10 @@ about compliance is worse than a gap.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import sys
 import textwrap
 import time
 from contextlib import contextmanager
@@ -44,6 +46,13 @@ HUB_URL = os.environ.get("HUB_URL", "http://localhost:8000")
 NODE_URL = os.environ.get("AR2_NODE_URL", "http://localhost:8001")
 PANCAKE_URL = os.environ.get("PANCAKE_URL", "http://localhost:8100")
 TERRAPIPE_OS_URL = os.environ.get("TERRAPIPE_OS_URL", "http://localhost:8200")
+
+# The node's agent-facing surface. Its own port and its own container, so it is
+# configured separately rather than derived from the HTTP URL above.
+MCP_URL = os.environ.get(
+    "TERRAPIPE_OS_MCP_URL",
+    TERRAPIPE_OS_URL.rsplit(":", 1)[0] + ":8201/mcp",
+)
 
 # The four demo fields, vendored into this repository rather than read out of
 # terrapipe-os. terrapipe-os is private; pancake is not. Resolving these only
@@ -172,27 +181,59 @@ def services() -> dict[str, dict[str, Any]]:
     return out
 
 
-def share_mounted() -> tuple[bool, str]:
-    """Whether the mirrored rasters are where this process can read them."""
-    root = os.environ.get("TERRAPIPE_SHARE")
-    if not root:
-        return False, "TERRAPIPE_SHARE is not set"
-    path = Path(root)
-    if not path.is_dir():
-        return False, f"{root} is not a directory"
-    stores = sorted(p.name for p in path.iterdir() if p.is_dir())
-    if not stores:
-        return False, f"{root} is empty; nothing has been ingested"
-    return True, f"{root}: {', '.join(stores)}"
+class _NoLocalBackend:
+    """Import hook that refuses to load the terrapipe-os backend in this kernel."""
+
+    BLOCKED = ("terrapipe_os",)
+
+    def find_module(self, fullname, path=None):  # pragma: no cover - legacy protocol
+        return self.find_spec(fullname, path)
+
+    def find_spec(self, fullname, path=None, target=None):
+        root = fullname.split(".")[0]
+        if root in self.BLOCKED:
+            raise ImportError(
+                f"{fullname} must not be imported by this notebook. Every reading "
+                "here comes from the hosted node over HTTP; computing the same "
+                "numbers in this process would prove nothing about the operator's "
+                "deployment. See openscience_demo.forbid_local_backend()."
+            )
+        return None
 
 
-def terrapipe_os_importable() -> tuple[bool, str]:
-    try:
-        import terrapipe_os  # noqa: F401,PLC0415
+def forbid_local_backend() -> str:
+    """Make a local backend impossible rather than merely unused.
 
-        return True, "terrapipe_os is importable"
-    except ImportError as exc:
-        return False, str(exc)
+    Every reading in this notebook has to come from the hosted node, because
+    that is the thing being demonstrated: a node an operator runs, against
+    rasters an operator mirrored, answering about a field it was given consent
+    to look at. Computing the same numbers in this process would produce
+    identical output while proving none of it, and would turn a node outage into
+    a green run.
+
+    The notebook did exactly that until 2026-09-06 -- four steps fell back to an
+    in-process terrapipe_os and reported LOCAL, which is honest labelling of the
+    wrong thing to be doing. Saying "nothing below imports it" would be a claim
+    about code a reader has to go and verify. This makes the claim enforceable:
+    if any cell below reaches for the backend, it raises.
+    """
+    already_blocked = any(isinstance(hook, _NoLocalBackend) for hook in sys.meta_path)
+    installed = False
+    if not already_blocked:
+        try:
+            installed = importlib.util.find_spec("terrapipe_os") is not None
+        except ImportError:
+            installed = False
+        sys.meta_path.insert(0, _NoLocalBackend())
+    for name in list(sys.modules):
+        if name.split(".")[0] in _NoLocalBackend.BLOCKED:
+            del sys.modules[name]
+    where = (
+        "it is installed in this kernel, and is now unimportable"
+        if installed
+        else "it is not installed here either"
+    )
+    return f"local terrapipe-os backend blocked: {where}"
 
 
 # --------------------------------------------------------------------------
@@ -219,30 +260,86 @@ def demo_fields() -> list[dict[str, Any]]:
     return json.loads(DEMO_FIELDS.read_text())["features"]
 
 
-def local_cover(feature: dict[str, Any], geo_id: str) -> Any:
-    """The cover AR2 would return for this field, without asking AR2.
+def mcp_tools(token: str | None = None) -> list[tuple[str, str]]:
+    """The agent-facing tools, asked of the hosted MCP server over HTTP.
 
-    Legitimate only because these particular fields *are* S2 cells: each one
-    carries the token it was cut from, so its cover is that token exactly and
-    nothing is being approximated. A surveyed boundary is different -- AR2
-    computes its covering and decides how much of it to disclose -- and this
-    shortcut would be wrong there.
+    Built in process against a local terrapipe_os until 2026-09-06, which listed
+    the tools this checkout defines rather than the ones the operator's node
+    actually offers. Those are different claims, and only the second is worth
+    demonstrating.
     """
-    from terrapipe_os.ar2 import Cover  # noqa: PLC0415
+    import httpx  # noqa: PLC0415
+    from mcp.client.session import ClientSession  # noqa: PLC0415
+    from mcp.client.streamable_http import streamable_http_client  # noqa: PLC0415
 
-    token = feature["properties"].get("s2_token")
-    if not token:
-        raise ValueError("this field is not an S2 cell; a cover has to come from AR2")
-    return Cover(geo_id=geo_id, tier="precise", tokens=(token,), masking_level="L1")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    async def ask() -> list[tuple[str, str]]:
+        async with httpx.AsyncClient(headers=headers, timeout=60) as http:
+            async with streamable_http_client(MCP_URL, http_client=http) as streams:
+                async with ClientSession(streams[0], streams[1]) as session:
+                    await session.initialize()
+                    listed = await session.list_tools()
+                    return sorted(
+                        (t.name, (t.description or "").split(".")[0].strip()) for t in listed.tools
+                    )
+
+    return run_async(ask)
 
 
-def local_registry() -> Any:
-    from terrapipe_os.registry import Registry  # noqa: PLC0415
+def publication_gate(token: str | None = None) -> tuple[int, str]:
+    """Ask the hosted node to publish a layer without a publish credential.
 
-    library = Path(os.environ.get("TERRAPIPE_LAYERS", "")) if os.environ.get("TERRAPIPE_LAYERS") else None
-    if library is None:
-        library = Path(__file__).resolve().parents[2] / "terrapipe-os" / "layers" / "layers.json"
-    return Registry.load(library)
+    The point is the refusal and where it comes from. Read out of a local gate
+    object until 2026-09-06, which demonstrated that this checkout contains a
+    rule, not that the operator's node enforces one.
+    """
+    response = post(
+        f"{TERRAPIPE_OS_URL}/layers",
+        token=token,
+        json={"layer_id": "demo_probe_not_a_real_layer", "title": "probe"},
+    )
+    try:
+        body = response.json()
+        detail = body.get("detail") or body.get("reason") or json.dumps(body)[:200]
+    except ValueError:
+        detail = response.text[:200]
+    return response.status_code, str(detail)
+
+
+def dds_export(
+    geojson: dict[str, Any],
+    *,
+    country: str,
+    token: str | None = None,
+    grants: dict[str, str] | None = None,
+    include_producer_name: bool = False,
+) -> dict[str, Any]:
+    """Turn screened plots into a DDS-ready GeoJSON, on the hosted node.
+
+    ``grants`` maps GeoID to the credential that unlocks it. The node screens
+    each plot as it goes, so a plot without a grant comes back with its geometry
+    and no finding rather than a field-scoped verdict nobody consented to. The
+    grant travels in the body here, one per GeoID, because a filing can span
+    fields belonging to different owners.
+    """
+    response = post(
+        f"{TERRAPIPE_OS_URL}/dds",
+        token=token,
+        json={
+            "collection": geojson,
+            "producer_country": country,
+            "grants": grants or {},
+            "include_producer_name": include_producer_name,
+        },
+    )
+    if not response.ok:
+        body = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+        raise RuntimeError(
+            f"POST /dds returned {response.status_code} "
+            f"({body.get('reason', 'no reason given')}): {body.get('detail', response.text[:200])}"
+        )
+    return response.json()
 
 
 # --------------------------------------------------------------------------
@@ -386,10 +483,12 @@ def get(url: str, *, token: str | None = None, grant: str | None = None, **kwarg
     return requests.get(url, headers=headers, timeout=kwargs.pop("timeout", 60), **kwargs)
 
 
-def post(url: str, *, token: str | None = None, **kwargs) -> requests.Response:
+def post(url: str, *, token: str | None = None, grant: str | None = None, **kwargs) -> requests.Response:
     headers = kwargs.pop("headers", {})
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    if grant:
+        headers["X-Field-Grant"] = grant
     return requests.post(url, headers=headers, timeout=kwargs.pop("timeout", 60), **kwargs)
 
 

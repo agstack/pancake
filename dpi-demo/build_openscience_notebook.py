@@ -119,24 +119,62 @@ mode the rest of the notebook is in.
 
 code("""
 import json, os, sys, textwrap
-sys.path.insert(0, os.getcwd())   # the notebook runs from dpi-demo/, beside its support module
+from pathlib import Path
+
+def _find_support_module():
+    \"\"\"Locate openscience_demo.py, which lives in pancake/dpi-demo/.
+
+    This used to be sys.path.insert(0, os.getcwd()) with a comment saying the
+    notebook runs from dpi-demo/. It does not always: a reviewer opens the
+    executed copy archived under workplan/, or launches Jupyter from home, and
+    gets ModuleNotFoundError with nothing pointing at the cause.
+    \"\"\"
+    starts = []
+    if os.environ.get("PANCAKE_DPI_DEMO"):
+        starts.append(Path(os.environ["PANCAKE_DPI_DEMO"]).expanduser())
+    # The directory holding this notebook, when the editor tells us what it is.
+    for key in ("__vsc_ipynb_file__", "__session__"):
+        if globals().get(key):
+            starts.append(Path(globals()[key]).resolve().parent)
+    starts += [Path.cwd(), *Path.cwd().parents, Path.home()]
+    for base in starts:
+        for candidate in (base, base / "dpi-demo", base / "pancake" / "dpi-demo"):
+            if (candidate / "openscience_demo.py").is_file():
+                return candidate.resolve()
+    return None
+
+_HOME = _find_support_module()
+if _HOME is None:
+    raise SystemExit(textwrap.dedent(f\"\"\"
+        Cannot find openscience_demo.py, which this notebook is built around.
+
+        It lives in the pancake repository at pancake/dpi-demo/, alongside the
+        notebook's own source. Looked outward from {Path.cwd()} and found no
+        copy.
+
+        Either start the kernel from that directory:
+            cd <your pancake checkout>/dpi-demo && jupyter lab
+
+        or point at it and restart the kernel:
+            export PANCAKE_DPI_DEMO=<your pancake checkout>/dpi-demo
+    \"\"\").strip())
+
+sys.path.insert(0, str(_HOME))
 import openscience_demo as od
+
+print(f"support module   {_HOME}")
+print(f"                 {od.forbid_local_backend()}")
+print()
 
 STACK = od.services()
 for name, info in STACK.items():
     print(f"{name:14} {'UP  ' if info['up'] else 'DOWN'}  {info['url']:32} {info['detail']}")
-
-SHARE_OK, SHARE_WHY = od.share_mounted()
-TPOS_OK, TPOS_WHY = od.terrapipe_os_importable()
-print()
-print(f"mirrored rasters   {'YES' if SHARE_OK else 'NO '}  {SHARE_WHY}")
-print(f"terrapipe-os here  {'YES' if TPOS_OK else 'NO '}  {TPOS_WHY}")
+print(f"{'mcp':14}       {od.MCP_URL}")
 
 NODE_UP = STACK['terrapipe-os']['up']
-CAN_RUN_LOCALLY = SHARE_OK and TPOS_OK
 print()
-print("mode:", "LIVE (stack is up)" if NODE_UP else
-      ("LOCAL (real rasters, in process)" if CAN_RUN_LOCALLY else "SKIPPED (nothing to read)"))
+print("mode:", "LIVE against the hosted node" if NODE_UP else
+      "SKIPPED (the node is not answering, and there is no local substitute)")
 """)
 
 # ==========================================================================
@@ -248,22 +286,8 @@ with od.step("screen without a grant (neighbourhood scope)") as s:
     if NODE_UP:
         COARSE_SCREEN = od.get(f"{od.TERRAPIPE_OS_URL}/screen/{GEOIDS[SUBJECT]}",
                                token=HUB_TOKEN).json()
-    elif CAN_RUN_LOCALLY:
-        od.local(s, "computed in process from the mirrored rasters")
-        import s2sphere
-        from terrapipe_os.ar2 import COARSE_LEVEL, Cover
-        from terrapipe_os.screen import screen_deforestation
-        REGISTRY = od.local_registry()
-        token = FIELDS[1]['properties']['s2_token']
-        coarse = s2sphere.CellId.from_token(token).parent(COARSE_LEVEL).to_token()
-        print(f"  the field's own cell                {token}   (~9 ha)")
-        print(f"  what a caller without a grant gets  {coarse}   (L{COARSE_LEVEL})")
-        print()
-        COARSE_SCREEN = screen_deforestation(
-            Cover(geo_id=GEOIDS[SUBJECT], tier='coarse', tokens=(coarse,), masking_level='L0'),
-            REGISTRY).to_dict()
     else:
-        od.skip(s, "no node and no mirrored rasters")
+        od.skip(s, "the node is not answering")
 
 if COARSE_SCREEN:
     od.show_screen(COARSE_SCREEN)
@@ -349,16 +373,8 @@ with od.step("screen each field") as s:
             name = feature['properties']['name']
             SCREENS[name] = od.get(f"{od.TERRAPIPE_OS_URL}/screen/{GEOIDS[name]}",
                                    token=HUB_TOKEN, grant=GRANT).json()
-    elif CAN_RUN_LOCALLY:
-        od.local(s, "computed in process from the mirrored rasters")
-        from terrapipe_os.screen import screen_deforestation
-        REGISTRY = od.local_registry()
-        for feature in FIELDS:
-            name = feature['properties']['name']
-            cover = od.local_cover(feature, GEOIDS[name])
-            SCREENS[name] = screen_deforestation(cover, REGISTRY).to_dict()
     else:
-        od.skip(s, "no node and no mirrored rasters")
+        od.skip(s, "the node is not answering")
 
 for feature in FIELDS:
     name = feature['properties']['name']
@@ -532,8 +548,11 @@ with od.step("turn a screen into a BITE") as s:
         except ImportError as exc:
             od.skip(s, f"pancake_services not importable: {exc}")
         else:
-            if not NODE_UP:
-                od.local(s, "transformed in process from the screen computed above")
+            # Pancake's own adapter, and it makes no call: it reshapes the screen
+            # the node already returned. Reported LIVE until 2026-09-06 because
+            # the node happened to be up, which credited a local transformation
+            # to the wrong side of the wire.
+            od.local(s, "Pancake's adapter, reshaping the screen the node returned")
             name = FIELDS[1]['properties']['name']
             adapter = DeforestationAdapter({
                 'vendor_name': 'terrapipe-os', 'base_url': od.TERRAPIPE_OS_URL,
@@ -623,26 +642,30 @@ response says so.
 
 code("""
 with od.step("export a DDS-ready GeoJSON") as s:
-    if not SCREENS or not TPOS_OK:
-        od.skip(s, "no screens, or terrapipe-os not importable")
+    if not SCREENS:
+        od.skip(s, "no screens to attach")
     else:
-        if not NODE_UP:
-            od.local(s, "exported in process from the screens computed above")
-        from terrapipe_os import dds
+        # The node needs to know which plot is which field, so the GeoID rides
+        # in the properties. It screens each one itself, using the grant we hold
+        # for it -- a plot with no grant comes back with geometry and no finding.
+        SUBMITTED = json.loads(json.dumps(EXPORT))
+        for feature, field in zip(SUBMITTED['features'], FIELDS):
+            feature['properties']['GeoID'] = GEOIDS[field['properties']['name']]
 
-        plots = dds.plots_from_geojson(
-            EXPORT, producer_country='HN',
-            geo_ids={i: GEOIDS[f['properties']['name']] for i, f in enumerate(FIELDS)})
-        for plot, feature in zip(plots, FIELDS):
-            plot.screen = SCREENS.get(feature['properties']['name'])
+        RESULT = od.dds_export(
+            SUBMITTED, country='HN', token=HUB_TOKEN,
+            grants={g: GRANT for g in GEOIDS.values()} if GRANT else {})
 
-        collection = dds.to_collection(plots)
-        problems = dds.validate(collection)
+        collection = RESULT['collection']
         print(f"  plots        {len(collection['features'])}")
-        print(f"  problems     {len(problems)}" + ("" if problems else "  (well-formed against the rules as we read them)"))
-        for problem in problems:
+        print(f"  screened     {RESULT['screened']} of {len(collection['features'])}")
+        for refusal in RESULT['refused']:
+            print(f"    refused    feature {refusal['feature']}: {refusal['reason']}")
+        print(f"  problems     {len(RESULT['problems'])}"
+              + ("" if RESULT['problems'] else "  (well-formed against the rules as we read them)"))
+        for problem in RESULT['problems']:
             print(f"    - {problem}")
-        print(f"  statements   {len(dds.chunk(collection))}  (a statement is capped at 25 MB; "
+        print(f"  statements   {RESULT['chunks']}  (a statement is capped at 25 MB; "
               f"a larger consignment is split)")
         print()
         example = collection['features'][1]['properties']
@@ -650,19 +673,21 @@ with od.step("export a DDS-ready GeoJSON") as s:
             if key == 'deforestation':
                 continue
             print(f"  {key:16} {value}")
-        print(f"  {'deforestation':16} {json.dumps(example['deforestation'])[:280]}")
+        if 'deforestation' in example:
+            print(f"  {'deforestation':16} {json.dumps(example['deforestation'])[:280]}")
         print()
         leaked = [k for k, v in example.items() if 'Ramirez' in str(v)]
         print(f"  the producer's name appears in: {leaked or 'nothing'}")
+        print(f"  {RESULT['validator_note'][:150]}")
 """)
 
 code("""
 # Written out so it can be opened in any GIS, or diffed between runs.
 with od.step("write the statement to disk") as s:
-    if not SCREENS or not TPOS_OK:
+    if not SCREENS:
         od.skip(s, "nothing to write")
     else:
-        od.local(s, "written from the export above")
+        od.local(s, "the file is written here; the statement in it was built on the node")
         out = os.path.join(os.getcwd(), 'honduras_dds_ready.geojson')
         with open(out, 'w') as handle:
             json.dump(collection, handle, indent=2)
@@ -690,22 +715,21 @@ reading so the community can.
 
 code("""
 with od.step("show the publication gate") as s:
-    if not TPOS_OK:
-        od.skip(s, "terrapipe-os not importable")
+    if not NODE_UP:
+        od.skip(s, "the node is not answering")
     else:
-        od.local(s, "the refusal reasons, read out of the gate itself")
-        import inspect, re
-        from terrapipe_os.publish import gate
-        # Read from the source rather than restated here, so this list cannot
-        # quietly fall out of step with what the gate actually does.
-        reasons = sorted(set(re.findall(r'PublicationRefused\\(\\s*"([a-z_]+)"', inspect.getsource(gate))))
-        print("  A publication is refused for exactly these reasons, and no others:")
-        for reason in reasons:
-            print(f"    - {reason}")
+        # Actually try to publish, without a publish credential, and let the
+        # operator's node say no. Read out of a local gate object until
+        # 2026-09-06, which showed that this checkout contains a rule rather
+        # than that the deployment enforces one.
+        status, detail = od.publication_gate(HUB_TOKEN)
+        print(f"  POST {od.TERRAPIPE_OS_URL}/layers  ->  {status}")
+        print(f"  {detail}")
         print()
-        print("  None of them is 'we disagree with the science'. The gate checks that a layer")
-        print("  can be read and attributed, not that it is right. Judging the data is the")
-        print("  community's job, and the provenance travels with every reading so it can.")
+        print("  The gate checks that a layer can be read and attributed, not that it is")
+        print("  right. There is no refusal reason meaning 'we disagree with the science'.")
+        print("  Judging the data is the community's job, and the provenance travels with")
+        print("  every reading so it can.")
 """)
 
 # ==========================================================================
@@ -728,25 +752,14 @@ rather than clean, that the export will not guess which field a boundary is.
 
 code("""
 with od.step("list the agent-facing tools") as s:
-    if not TPOS_OK:
-        od.skip(s, "terrapipe-os not importable")
+    if not NODE_UP:
+        od.skip(s, "the node is not answering")
     else:
-        od.local(s, "the server built in process and asked what it offers")
-        from mcp.client import Client
-        from terrapipe_os.ar2 import AR2Client
-        from terrapipe_os.handlers import Service
-        from terrapipe_os.mcp_server import build_mcp
-
-        service = Service(registry=od.local_registry(),
-                          ar2=AR2Client('http://unreachable'), auth_description={})
-        server = build_mcp(service, None, stdio_operator_is_principal=True)
-
-        async def _tools():
-            async with Client(server) as client:
-                return (await client.list_tools()).tools
-
-        for tool in sorted(od.run_async(_tools), key=lambda t: t.name):
-            print(f"  {tool.name:22} {(tool.description or '').split('.')[0][:92]}")
+        # Asked of the operator's MCP server over HTTP. Built in process against
+        # a local terrapipe_os until 2026-09-06, which listed the tools this
+        # checkout defines rather than the ones the node actually offers.
+        for name, summary in od.mcp_tools(HUB_TOKEN):
+            print(f"  {name:22} {summary[:92]}")
 """)
 
 # ==========================================================================
