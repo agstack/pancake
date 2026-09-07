@@ -626,6 +626,176 @@ def consent_map(
     return canvas
 
 
+def s2_cover(feature: dict[str, Any], token: str) -> tuple[list[str], str]:
+    """The S2 cover AR2 derived for this geometry, asked of AR2.
+
+    Registration is idempotent on the geometry -- an already-registered shape
+    comes back in about 70 ms with its cover attached -- so this costs a round
+    trip rather than a new field, and returns the registry's own cover instead
+    of a second implementation of the covering algorithm that would agree today
+    and drift later.
+    """
+    try:
+        response = requests.post(
+            f"{NODE_URL}/register-field-boundary",
+            json={
+                "wkt": wkt_of(feature["geometry"]),
+                "return_s2_indices": True,
+                "s2_index": "15,20",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        return [], f"AR2 could not be reached: {exc.__class__.__name__}"
+    if not response.ok:
+        return [], f"AR2 answered HTTP {response.status_code}"
+    cover = ((response.json() or {}).get("S2 Cell Tokens") or {}).get("v2_cover") or []
+    if not cover:
+        return [], "AR2 returned no v2 cover for this geometry"
+    return cover, f"AR2's own v2 cover: {len(cover)} cells"
+
+
+def cover_map(feature: dict[str, Any], cover: list[str]):
+    """The field, and the S2 cells the screen actually read for it.
+
+    The one picture that explains why the numbers do not land exactly on what
+    was placed. The placer read a single L15 cell; the screen reads AR2's cover
+    of the polygon registered from that cell's corners, which is the L15 cell
+    plus a skirt of much smaller cells hugging the boundary. That skirt is real
+    ground just outside the original cell, and it pulls the field's figures
+    towards its surroundings.
+    """
+    import folium  # noqa: PLC0415
+    import s2sphere  # noqa: PLC0415
+
+    canvas = _basemap(_centre([feature]), 16)
+
+    by_level: dict[int, list[str]] = {}
+    for cell in cover:
+        by_level.setdefault(s2sphere.CellId.from_token(cell).level(), []).append(cell)
+
+    core = min(by_level) if by_level else None
+    for level, cells in sorted(by_level.items()):
+        # The coarse cell is the field's own; everything finer is refinement.
+        colour = "#2874a6" if level == core else "#e67e22"
+        for cell in cells:
+            folium.Polygon(
+                locations=s2_cell_ring(cell),
+                color=colour,
+                weight=1,
+                fill=True,
+                fill_opacity=0.25 if level == core else 0.55,
+                tooltip=f"S2 level {level}: {cell}",
+            ).add_to(canvas)
+
+    folium.Polygon(
+        locations=_ring_of(feature),
+        color="#ffffff",
+        weight=2,
+        fill=False,
+        tooltip="the registered boundary",
+    ).add_to(canvas)
+
+    _legend(
+        canvas,
+        {
+            **{
+                f"L{level}: {len(cells)} cell{'s' if len(cells) != 1 else ''}"
+                + (" (the field's own cell)" if level == core else " (boundary refinement)"): (
+                    "#2874a6" if level == core else "#e67e22"
+                )
+                for level, cells in sorted(by_level.items())
+            },
+            "the registered boundary": "#ffffff",
+        },
+    )
+    folium.LayerControl(collapsed=True).add_to(canvas)
+    return canvas
+
+
+# A bbox wider than this is not a statement about where the layer is so much as
+# a statement that it is everywhere; drawn on a map of Honduras it would be a
+# rectangle around the whole view, which tells the reader nothing.
+WIDER_THAN_THE_MAP = 60.0
+
+
+def coverage_map(features: list[dict[str, Any]], layers: list[dict[str, Any]]):
+    """Each layer's declared extent, and the fields that fall inside or outside.
+
+    This is what turns ``outside_coverage`` from a word in a refusal into
+    something you can see: the oil palm map is a regional band across the north,
+    three of the four fields are in the coffee belt to the south of it, and the
+    node is right to refuse them rather than report no palm.
+    """
+    import folium  # noqa: PLC0415
+
+    canvas = _basemap(_centre(features), 7)
+    palette = ["#8e44ad", "#16a085", "#d35400", "#2c3e50", "#7f8c8d"]
+
+    # Grouped by extent, not by layer: the four ICF layers share one national
+    # bbox, and drawing four identical rectangles stacks them into a single
+    # muddy outline that claims to be four things.
+    shared: dict[tuple[float, ...], list[str]] = {}
+    everywhere: list[str] = []
+    undeclared: list[str] = []
+    for layer in layers:
+        bbox = (layer.get("coverage") or {}).get("bbox")
+        layer_id = layer.get("layer_id", "?")
+        if not bbox:
+            undeclared.append(layer_id)
+            continue
+        west, south, east, north = bbox
+        if east - west > WIDER_THAN_THE_MAP:
+            everywhere.append(layer_id)
+            continue
+        shared.setdefault(tuple(bbox), []).append(layer_id)
+
+    drawn: dict[str, str] = {}
+    for index, (bbox, ids) in enumerate(shared.items()):
+        west, south, east, north = bbox
+        colour = palette[index % len(palette)]
+        label = ids[0] if len(ids) == 1 else f"{len(ids)} layers sharing one extent"
+        drawn[label] = colour
+        folium.Rectangle(
+            bounds=[[south, west], [north, east]],
+            color=colour,
+            weight=2,
+            fill=True,
+            fill_opacity=0.06,
+            tooltip="declared extent of: " + ", ".join(ids),
+        ).add_to(canvas)
+
+    for feature in features:
+        folium.Polygon(
+            locations=_ring_of(feature),
+            color="#c0392b",
+            weight=2,
+            fill=True,
+            fill_opacity=0.9,
+            tooltip=feature["properties"]["title"],
+        ).add_to(canvas)
+
+    # Named rather than dropped. A layer missing from a coverage map should not
+    # be missing silently, which is the same argument the readings make.
+    not_drawn = {}
+    if everywhere:
+        not_drawn[f"{len(everywhere)} wider than this map, not drawn"] = "#bdc3c7"
+    if undeclared:
+        not_drawn[f"{len(undeclared)} declaring no extent, not drawn"] = "#bdc3c7"
+
+    _legend(
+        canvas,
+        {
+            **{f"{label}: declared extent": colour for label, colour in drawn.items()},
+            "the four demo fields": "#c0392b",
+            **not_drawn,
+        },
+    )
+    folium.LayerControl(collapsed=True).add_to(canvas)
+    return canvas
+
+
 def _legend(canvas, entries: dict[str, str]) -> None:
     """A plain HTML legend. folium has no first-class one."""
     import folium  # noqa: PLC0415

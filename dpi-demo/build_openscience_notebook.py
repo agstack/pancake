@@ -450,6 +450,36 @@ underneath the demo rather than that S2 is doing its job.
 """)
 
 md("""
+Zoomed to one field, this stops being an argument and becomes a picture.
+
+The blue square is the field's own S2 cell, the one the placer read. The orange
+skirt around its edge is the refinement AR2 added when covering the polygon —
+much smaller cells, at level 20, tracing the boundary. The white outline is the
+registered boundary itself.
+
+Those orange cells are the difference. They are real ground just outside the
+blue square, the screen reads them because they are part of the cover, and they
+are mostly but not entirely coffee — which is the whole of why the figures come
+back near what was placed rather than exactly on it.
+
+The cover is asked of AR2 rather than recomputed here. Registration is
+idempotent on the geometry, so an already-registered field comes back in about
+70 ms with its cover attached, and what gets drawn is the registry's covering
+rather than a second implementation of it.
+""")
+
+code("""
+if od.have_folium() and HUB_TOKEN:
+    subject = next(f for f in FIELDS if f['properties']['name'] == SUBJECT)
+    cover, why = od.s2_cover(subject, HUB_TOKEN)
+    print(f"  {why}")
+    if cover:
+        display(od.cover_map(subject, cover))
+elif not od.have_folium():
+    print(od.maps_unavailable())
+""")
+
+md("""
 ### What consent bought
 
 The same field, asked about twice. Without a grant the answer was about the
@@ -533,6 +563,32 @@ with od.step("show what was absent, and why") as s:
         print(f"  {sum(1 for r in rows if r[1] == 'read')} read, "
               f"{sum(1 for r in rows if r[1] != 'read')} absent.")
         print("  Not one of the absent layers contributed a value to the verdict.")
+""")
+
+md("""
+`outside_coverage` is the absence with a shape, so it can be drawn.
+
+Each rectangle is a layer's **declared** extent, as the library states it — not
+where the data happens to be good, but where the publisher says the map exists.
+The four fields are in red.
+
+The oil palm layer is the one to look at. It is a regional band across the
+north, and three of the four fields sit south of it in the coffee belt. When the
+node says `outside_coverage` for those three it is not failing to find palm; it
+is declining to report on ground its palm map never described. The fourth field
+falls inside the band and comes back `no_data`, which is the different and
+weaker statement: the map covers you and has nothing here.
+
+Layers wider than this view — the JRC tropical belt, and the global ones — are
+counted in the legend rather than drawn, since a rectangle around the whole map
+says nothing.
+""")
+
+code("""
+if od.have_folium() and STACK['terrapipe-os']['up']:
+    display(od.coverage_map(FIELDS, od.get(f"{od.TERRAPIPE_OS_URL}/layers", token=HUB_TOKEN).json()))
+elif not od.have_folium():
+    print(od.maps_unavailable())
 """)
 
 # ==========================================================================

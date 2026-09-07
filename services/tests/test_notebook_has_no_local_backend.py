@@ -427,3 +427,78 @@ def test_the_map_helpers_do_not_reach_the_backend() -> None:
     end = source.index("def _legend")
 
     assert "terrapipe_os" not in source[start:end]
+
+
+def test_every_layer_is_either_drawn_or_named_as_not_drawn() -> None:
+    """A coverage map that quietly omits layers is the failure it illustrates.
+
+    The map exists to show that ``outside_coverage`` is a real statement about
+    extent. If some layers were dropped without a word -- the ones declaring no
+    bbox, or the ones wider than the view -- the picture would imply the library
+    is smaller than it is, which is the same silent-absence problem the readings
+    are careful about.
+    """
+    import html as html_module  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    od = _module()
+    pytest.importorskip("folium")
+
+    layers = [
+        {"layer_id": "national_a", "coverage": {"bbox": [-89.4, 12.9, -83.1, 17.5]}},
+        {"layer_id": "national_b", "coverage": {"bbox": [-89.4, 12.9, -83.1, 17.5]}},
+        {"layer_id": "regional", "coverage": {"bbox": [-88.7, 14.6, -84.2, 16.0]}},
+        {"layer_id": "global_belt", "coverage": {"bbox": [-180.0, -30.0, 180.0, 30.0]}},
+        {"layer_id": "undeclared", "coverage": {}},
+    ]
+
+    drawn = html_module.unescape(od.coverage_map(od.demo_fields(), layers)._repr_html_())
+    legend = re.findall(r'vertical-align:middle"></span>([^<]{2,120})</div>', drawn)
+    accounted = " ".join(legend)
+
+    assert "2 layers sharing one extent" in accounted, "identical extents should be drawn once"
+    assert "regional" in accounted
+    assert "1 wider than this map, not drawn" in accounted
+    assert "1 declaring no extent, not drawn" in accounted
+
+
+def test_identical_extents_are_drawn_once_not_stacked() -> None:
+    """Four rectangles on the same four corners is one muddy outline, not four."""
+    od = _module()
+    pytest.importorskip("folium")
+
+    same = [-89.4, 12.9, -83.1, 17.5]
+    layers = [{"layer_id": f"layer_{n}", "coverage": {"bbox": same}} for n in range(4)]
+
+    drawn = od.coverage_map(od.demo_fields(), layers)._repr_html_()
+
+    assert drawn.count("L.rectangle") == 1
+
+
+def test_the_cover_map_separates_the_field_cell_from_its_refinement() -> None:
+    """The whole point of the picture: which cells are the skirt.
+
+    A cover is the field's own cell plus much smaller cells tracing the
+    boundary, and it is that skirt which explains why a screen lands near what
+    was placed rather than exactly on it. Colouring them alike would lose the
+    argument the map is there to make.
+    """
+    import html as html_module  # noqa: PLC0415
+    import re  # noqa: PLC0415
+
+    od = _module()
+    pytest.importorskip("folium")
+
+    field = od.demo_fields()[0]
+    token = field["properties"]["s2_token"]
+    import s2sphere  # noqa: PLC0415
+
+    core = s2sphere.CellId.from_token(token)
+    skirt = [c.to_token() for c in list(core.children())[:2]]
+
+    drawn = html_module.unescape(od.cover_map(field, [token, *skirt])._repr_html_())
+    legend = " ".join(re.findall(r'vertical-align:middle"></span>([^<]{2,120})</div>', drawn))
+
+    assert "the field's own cell" in legend
+    assert "boundary refinement" in legend
+    assert "the registered boundary" in legend
