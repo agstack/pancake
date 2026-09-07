@@ -144,7 +144,26 @@ class Ledger:
     steps: list[Step] = field(default_factory=list)
 
     def record(self, name: str, outcome: str, detail: str = "", seconds: float = 0.0) -> None:
-        self.steps.append(Step(name, outcome, detail, seconds))
+        """Record a step, replacing any earlier record of the same step.
+
+        Replacing rather than appending, because a notebook is re-run in
+        pieces. Someone reads section 5, scrolls back, runs the cell again to
+        watch it happen -- and on 2026-09-06 that turned one step into two
+        rows and the closing count from "15 against live services" into 18.
+        The ledger exists to be the one part of this document that cannot
+        overstate what ran, so counting a repeat as a second demonstration is
+        the specific thing it must not do.
+
+        The latest attempt wins, and keeps its original position: a step that
+        succeeded and then failed on re-run should read as failed, and a
+        reader following the narrative should still find it where it was.
+        """
+        fresh = Step(name, outcome, detail, seconds)
+        for i, existing in enumerate(self.steps):
+            if existing.name == name:
+                self.steps[i] = fresh
+                return
+        self.steps.append(fresh)
 
     def checklist(self) -> str:
         """What actually happened, generated from what actually happened.
@@ -1750,7 +1769,14 @@ def screen_with(geo_id: str, token: str, grant: str | None = None) -> tuple[int,
 
 
 def show_disclosure(rows: list[tuple[str, int, dict[str, Any]]]) -> None:
-    """The same question at each disclosure tier, side by side."""
+    """The same question at each disclosure tier, side by side.
+
+    The paragraph under this table in the notebook says the granted row
+    succeeded and the revoked one did not. That is markdown: it says the same
+    thing whatever the table above it shows, and on 2026-09-06 it said it over
+    a table where the granted row was a 403. So the table checks the claim
+    being made about it, and says so here if it does not hold.
+    """
     print(f"{'presented':22} {'HTTP':5} {'scope':14} {'cleared after cut-off':>21}   verdict")
     for label, status, body in rows:
         scope = body.get("scope") or "-"
@@ -1758,6 +1784,50 @@ def show_disclosure(rows: list[tuple[str, int, dict[str, Any]]]) -> None:
         reading = "-" if fraction is None else f"{fraction:.4f}"
         verdict = body.get("verdict") or body.get("reason") or body.get("detail") or "refused"
         print(f"{label:22} {status:<5} {scope:14} {reading:>21}   {str(verdict)[:38]}")
+
+    for note in _where_the_table_disagrees_with_the_text(rows):
+        print(f"\n  NOTE: {note}")
+
+
+def _where_the_table_disagrees_with_the_text(
+    rows: list[tuple[str, int, dict[str, Any]]],
+) -> list[str]:
+    """The claims the surrounding prose makes, checked against the rows.
+
+    Kept separate from the printing so the tests can assert on the findings
+    rather than on formatting.
+    """
+    by_label = {label: (status, body) for label, status, body in rows}
+    notes = []
+
+    granted = by_label.get("a field-access grant")
+    if granted and granted[0] != HTTP_OK:
+        notes.append(
+            f"the granted row came back HTTP {granted[0]}, not 200, so this run does not "
+            "show a grant widening the answer. The paragraph below assumes it did."
+        )
+    elif granted and granted[1].get("scope") != "field":
+        notes.append(
+            f"the granted row answered at {granted[1].get('scope')!r} scope rather than "
+            "'field', so the grant did not do what the paragraph below says it does."
+        )
+
+    revoked = by_label.get("the same, now revoked")
+    if revoked and revoked[0] == HTTP_OK:
+        notes.append(
+            "the revoked credential was still answered. That is the silent downgrade the "
+            "paragraph below says does not happen, and it is a defect in the node."
+        )
+
+    plain = by_label.get("nothing")
+    if plain and granted and plain[0] == granted[0] == HTTP_OK:
+        coarse, fine = plain[1].get("deforested_fraction"), granted[1].get("deforested_fraction")
+        if coarse is not None and fine is not None and coarse == fine:
+            notes.append(
+                "the coarse and the precise reading are identical, so this field does not "
+                "illustrate the difference in scope the paragraph below draws."
+            )
+    return notes
 
 
 def trace_back(list_id: str, token: str, grant: str) -> tuple[dict[str, Any], str]:
@@ -1819,6 +1889,7 @@ def inclusion_proof(list_id: str, geo_id: str, token: str) -> tuple[list[dict[st
     return proof, f"{len(proof)} sibling hashes, so a list of {2 ** len(proof)} could be proved this way"
 
 
+HTTP_OK = 200
 HTTP_NOT_FOUND = 404
 
 

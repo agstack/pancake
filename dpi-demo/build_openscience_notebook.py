@@ -565,19 +565,32 @@ DISCLOSURE = []
 
 with od.step("the same screen at three disclosure tiers") as s:
     if NODE_UP and HUB_TOKEN and SUBJECT_ID:
+        # A consent minted here and destroyed here, rather than the notebook's
+        # own GRANT. This cell ends by revoking what it was given, so pointing
+        # it at the shared credential meant running it twice asked both
+        # questions with a credential its own first run had already killed:
+        # rows two and three both came back 403, underneath a paragraph
+        # asserting that row two had worked. Re-running one cell is the most
+        # ordinary thing a reader does, and it turned the section that explains
+        # consent into a section that appeared to disprove it.
+        TIERS = od.consent_for([SUBJECT_ID], token=HUB_TOKEN, purpose='disclosure-comparison')
+
         DISCLOSURE.append(("nothing", *od.screen_with(SUBJECT_ID, HUB_TOKEN)))
-        if GRANT:
-            DISCLOSURE.append(("a field-access grant", *od.screen_with(SUBJECT_ID, HUB_TOKEN, GRANT)))
+        if TIERS.credential:
+            DISCLOSURE.append(("a field-access grant",
+                               *od.screen_with(SUBJECT_ID, HUB_TOKEN, TIERS.credential)))
 
             # Withdraw it and ask a third time. A revoked credential is refused
             # outright rather than quietly downgraded to the coarse answer --
             # a silent downgrade would make revocation indistinguishable from
             # never having presented anything.
-            WITHDRAWN, why = od.revoke(CONSENT.jti, HUB_TOKEN)
+            WITHDRAWN, why = od.revoke(TIERS.jti, HUB_TOKEN)
             print(f"  revoked: {why}")
             if WITHDRAWN:
                 DISCLOSURE.append(("the same, now revoked",
-                                   *od.screen_with(SUBJECT_ID, HUB_TOKEN, GRANT)))
+                                   *od.screen_with(SUBJECT_ID, HUB_TOKEN, TIERS.credential)))
+        else:
+            print(f"  no grant to compare against: {TIERS.why}")
     else:
         od.skip(s, "the node or the hub is not answering")
 
@@ -599,26 +612,21 @@ Only one of them is about a farm.
 **Every answer says which scope it used.** A coarse reading can never be mistaken
 for a precise one downstream, because the scope travels with the number.
 
-**Revocation bites, and it bites loudly.** The third row is the same credential
-that worked in the second, presented seconds later. It is refused outright. Had
-the node quietly fallen back to the neighbourhood answer, a withdrawn consent
-would look exactly like a caller who never had one — and the owner would have no
-way to tell whether withdrawing it had done anything.
+**Revocation bites, and it bites loudly.** The third row presents the same
+credential as the second, seconds later, and is refused outright. Had the node
+quietly fallen back to the neighbourhood answer, a withdrawn consent would look
+exactly like a caller who never had one — and the owner would have no way to
+tell whether withdrawing it had done anything.
 
-The grant is reissued below, because the rest of the notebook needs it.
-""")
+If the second row is not a 200, the table says so beneath itself and the
+paragraph above does not hold for that run. That happened on 2026-09-06: this
+cell used to revoke the notebook's shared credential, so running it a second
+time asked rows two and three with a grant its own first run had already
+withdrawn, and both came back 403 under this same confident paragraph.
 
-code("""
-with od.step("reissue the grant that was just revoked") as s:
-    if STACK['pancake']['up'] and HUB_TOKEN and any(GEOIDS.values()):
-        CONSENT = od.consent_for(
-            [GEOIDS[f['properties']['name']] for f in FIELDS],
-            token=HUB_TOKEN, purpose='eudr-screening',
-        )
-        GRANT = CONSENT.credential
-        print(f"  {CONSENT.why}")
-    else:
-        od.skip(s, "there is nothing to reissue against")
+The credential in that third row was minted for this comparison and destroyed
+here. The grant issued in section 5, which the rest of the notebook uses, was
+never touched.
 """)
 
 # ==========================================================================

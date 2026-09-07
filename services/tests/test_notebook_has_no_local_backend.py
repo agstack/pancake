@@ -1397,3 +1397,138 @@ def test_an_inclusion_proof_reveals_no_other_member() -> None:
     assert "geoids" not in body and "members" not in body, (
         "the proof helper reads the list's membership, which defeats the purpose"
     )
+
+
+# --------------------------------------------------------------------------
+# The ledger, and the cell that used to break it
+# --------------------------------------------------------------------------
+
+
+def test_re_running_a_step_does_not_count_it_twice() -> None:
+    """A reader re-runs a cell to watch it happen. That is not a second demo.
+
+    From the run of 2026-09-06: five cells were re-run and the closing line
+    read "18 against live services, 5 against local data" for a notebook with
+    fifteen live steps and three local ones.
+    """
+    od = _module()
+    ledger = od.Ledger()
+
+    ledger.record("screen each field", od.LIVE)
+    ledger.record("turn a screen into a BITE", od.LOCAL, "Pancake's adapter")
+    ledger.record("screen each field", od.LIVE)
+
+    assert len(ledger.steps) == 2
+    assert ledger.checklist().count("screen each field") == 1
+    assert "1 against live services, 1 against local data" in ledger.checklist()
+
+
+def test_a_re_run_step_reports_its_latest_outcome() -> None:
+    """Succeeded once and failed since is failed, not succeeded."""
+    od = _module()
+    ledger = od.Ledger()
+
+    ledger.record("screen each field", od.LIVE)
+    ledger.record("screen each field", od.FAILED, "ConnectionError")
+
+    assert [s.outcome for s in ledger.steps] == [od.FAILED]
+    assert "ConnectionError" in ledger.checklist()
+
+
+def test_a_re_run_step_keeps_its_place_in_the_narrative() -> None:
+    """The ledger reads in the order of the document, not of the reader's clicks."""
+    od = _module()
+    ledger = od.Ledger()
+
+    for name in ("register boundaries", "issue a grant", "screen each field"):
+        ledger.record(name, od.LIVE)
+    ledger.record("issue a grant", od.LIVE)
+
+    assert [s.name for s in ledger.steps] == [
+        "register boundaries", "issue a grant", "screen each field",
+    ]
+
+
+def test_the_consent_cell_does_not_revoke_the_notebooks_own_grant() -> None:
+    """It ends by revoking what it holds, so it must not hold the shared one.
+
+    This is what made the 2026-09-06 run show a 403 in the row that carries the
+    entire consent argument.
+    """
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+    start = built.index('with od.step("the same screen at three disclosure tiers")')
+    cell = built[start:built.index('od.show_disclosure(DISCLOSURE)', start)]
+
+    assert "od.revoke(" in cell, "the cell no longer demonstrates revocation"
+    assert "od.revoke(CONSENT.jti" not in cell, (
+        "the cell revokes the notebook's shared consent, so running it twice "
+        "asks with a credential its own previous run destroyed"
+    )
+    assert "TIERS = od.consent_for(" in cell, "the cell does not mint its own consent"
+    assert "od.revoke(TIERS.jti" in cell
+
+
+def test_the_notebook_no_longer_needs_to_repair_its_own_grant() -> None:
+    """The reissue step existed only to undo damage this cell should not do."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    assert "reissue the grant" not in built, (
+        "a cell repairs the credential another cell broke; the break is the defect"
+    )
+
+
+def test_the_table_contradicts_the_prose_out_loud() -> None:
+    """Markdown says the same thing whatever the table above it shows."""
+    od = _module()
+
+    notes = od._where_the_table_disagrees_with_the_text([
+        ("nothing", 200, {"scope": "neighbourhood", "deforested_fraction": 0.0116}),
+        ("a field-access grant", 403, {"reason": "grant_refused"}),
+        ("the same, now revoked", 403, {"reason": "grant_refused"}),
+    ])
+
+    assert notes, "the run of 2026-09-06 would still pass without comment"
+    assert any("403" in n and "not 200" in n for n in notes)
+
+
+def test_a_good_run_is_not_nagged() -> None:
+    """A check that fires on correct runs gets ignored, then deleted."""
+    od = _module()
+
+    notes = od._where_the_table_disagrees_with_the_text([
+        ("nothing", 200, {"scope": "neighbourhood", "deforested_fraction": 0.0116}),
+        ("a field-access grant", 200, {"scope": "field", "deforested_fraction": 0.4170}),
+        ("the same, now revoked", 403, {"reason": "grant_refused"}),
+    ])
+
+    assert notes == []
+
+
+def test_a_revoked_credential_that_still_answers_is_called_a_defect() -> None:
+    """The silent downgrade the section exists to rule out."""
+    od = _module()
+
+    notes = od._where_the_table_disagrees_with_the_text([
+        ("nothing", 200, {"scope": "neighbourhood", "deforested_fraction": 0.0116}),
+        ("a field-access grant", 200, {"scope": "field", "deforested_fraction": 0.4170}),
+        ("the same, now revoked", 200, {"scope": "neighbourhood", "deforested_fraction": 0.0116}),
+    ])
+
+    assert any("still answered" in n for n in notes)
+
+
+def test_a_grant_that_does_not_widen_the_scope_is_reported() -> None:
+    """A 200 at neighbourhood scope is a refusal wearing a success code.
+
+    The readings differ so that only the scope check can produce a note. With
+    them equal this passed against a deliberately disabled scope check, because
+    the note about identical readings also contains the word "scope".
+    """
+    od = _module()
+
+    notes = od._where_the_table_disagrees_with_the_text([
+        ("nothing", 200, {"scope": "neighbourhood", "deforested_fraction": 0.0116}),
+        ("a field-access grant", 200, {"scope": "neighbourhood", "deforested_fraction": 0.0223}),
+    ])
+
+    assert any("'neighbourhood' scope rather than" in n for n in notes)
