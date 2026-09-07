@@ -206,3 +206,133 @@ def test_a_genuinely_missing_module_is_refused_with_instructions(tmp_path) -> No
     assert "REFUSED" in result.stdout, result.stdout + result.stderr[-600:]
     assert "PANCAKE_DPI_DEMO" in result.stdout, "the refusal must name the way out"
     assert "jupyter lab" in result.stdout, "and the other way out"
+
+
+# --------------------------------------------------------------------------
+# Being told which deployment to talk to
+# --------------------------------------------------------------------------
+
+
+def _module():
+    sys.path.insert(0, str(DEMO))
+    import openscience_demo  # noqa: PLC0415
+
+    return openscience_demo
+
+
+def _stack(url: str) -> dict:
+    return {
+        name: {"url": url, "up": False, "detail": "ConnectionError"}
+        for name in ("hub", "ar2-node", "pancake", "terrapipe-os")
+    }
+
+
+def test_a_localhost_stack_that_is_down_is_reported_as_configuration() -> None:
+    """Four DOWN lines against localhost is not an outage.
+
+    The URLs defaulted to localhost, so a kernel that had not been handed five
+    environment variables reported the whole stack down and skipped the run,
+    which reads as the services being broken. It is the notebook not having been
+    told where to look, and the two need different fixes.
+    """
+    od = _module()
+
+    said = od.mode(_stack("http://localhost:8200"))
+
+    assert "SKIPPED" in said
+    assert "demo.env" in said, "it must name the file that fixes this"
+    assert "configuration" in said or "has been named" in said
+
+
+def test_a_configured_stack_that_is_down_is_reported_as_an_outage() -> None:
+    """And the other way, or the advice would be wrong half the time."""
+    od = _module()
+
+    said = od.mode(_stack("http://66.220.3.93:8200"))
+
+    assert "outage" in said
+    assert "demo.env" not in said, "the file is already read; saying to copy it would mislead"
+
+
+def test_a_reachable_node_needs_no_advice() -> None:
+    od = _module()
+    stack = _stack("http://node:8200")
+    stack["terrapipe-os"]["up"] = True
+
+    assert od.mode(stack) == "mode: LIVE against the hosted node"
+
+
+def test_the_example_settings_file_lists_every_key_the_module_reads() -> None:
+    """A key the module reads and the example omits is a silent misconfiguration."""
+    example = DEMO / "demo.env.example"
+    assert example.is_file(), "demo.env.example must be committed; demo.env must not"
+
+    text = example.read_text()
+    for key in (
+        "HUB_URL",
+        "AR2_NODE_URL",
+        "PANCAKE_URL",
+        "TERRAPIPE_OS_URL",
+        "TERRAPIPE_OS_MCP_URL",
+        "DEMO_EMAIL",
+        "DEMO_PASSWORD",
+        "HUB_TOKEN",
+        "DEMO_CLIENT_ID",
+        "DEMO_CLIENT_SECRET",
+    ):
+        assert key in text, f"{key} is read by openscience_demo.py but absent from the example"
+
+
+def test_the_real_settings_file_is_not_committed() -> None:
+    """It names a deployment and can hold a password."""
+    ignored = subprocess.run(
+        ["git", "check-ignore", "dpi-demo/demo.env"],
+        cwd=DEMO.parent,
+        capture_output=True,
+        text=True,
+    )
+
+    assert ignored.returncode == 0, "dpi-demo/demo.env must be gitignored"
+
+
+def test_the_environment_wins_over_the_file() -> None:
+    """So a single run can be pointed elsewhere without editing anything."""
+    od = _module()
+    settings = od.SETTINGS_FILE
+    if not settings.is_file():
+        pytest.skip("no demo.env here to be overridden")
+
+    key = "TERRAPIPE_OS_URL"
+    import os as _os
+
+    before = _os.environ.get(key)
+    _os.environ[key] = "http://set-by-the-environment:9999"
+    try:
+        loaded = od._load_settings(settings)
+        assert key not in loaded, "the file overwrote a variable that was already set"
+        assert _os.environ[key] == "http://set-by-the-environment:9999"
+    finally:
+        if before is None:
+            _os.environ.pop(key, None)
+        else:
+            _os.environ[key] = before
+
+
+def test_an_expired_token_is_not_passed_on_as_if_it_were_good() -> None:
+    """An expired HUB_TOKEN produces 401s that read as the services refusing us.
+
+    Cost a wrong inference on 2026-09-06: a stale token in a long-lived shell
+    looked like AR2 accepting expired credentials.
+    """
+    od = _module()
+    import base64 as _b64
+    import json as _json
+    import time as _time
+
+    def token(exp: float) -> str:
+        claims = _b64.urlsafe_b64encode(_json.dumps({"exp": exp}).encode()).decode().rstrip("=")
+        return f"header.{claims}.signature"
+
+    assert od._expired(token(_time.time() - 60)) is True
+    assert od._expired(token(_time.time() + 3600)) is False
+    assert od._expired("not-a-jwt") is False, "let the services judge what we cannot read"

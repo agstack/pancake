@@ -130,6 +130,42 @@ Two files rather than one, deliberately:
 Edit the builder, not the notebook. **Never hand-edit the committed output** —
 its whole value is that it records what actually happened.
 
+#### Running it
+
+```bash
+cp demo.env.example demo.env     # then fill in the four URLs and an account
+jupyter lab openscience_dpi_demo.ipynb
+```
+
+That is the whole setup. `demo.env` is read on import and is gitignored, since
+it names a deployment and can hold a password; a real environment variable
+overrides it, so a single run can be pointed elsewhere without editing anything.
+The hub account is registered on first use if it does not exist, and every token
+is fetched fresh, so there is nothing to rotate by hand.
+
+The notebook finds `openscience_demo.py` by searching outward from the kernel's
+working directory, so it also runs from an archived copy elsewhere on disk. If
+it cannot, it says where it looked; if the services are unreachable it
+distinguishes "no deployment was named" from "the deployment is down", because
+those need different fixes and used to look identical.
+
+#### Nothing runs locally, and it cannot
+
+Every reading comes from the hosted `terrapipe-os` node over HTTP: the screens,
+the DDS export, the publication gate, and the MCP tool listing. Four of those
+used to fall back to an in-process `terrapipe_os` when the node was unreachable,
+which produces the same numbers while demonstrating nothing about an operator's
+deployment — and turns an outage into a green run.
+
+`openscience_demo.forbid_local_backend()` runs in the first cell and installs an
+import hook, so a cell reaching for the backend raises rather than quietly
+computing the answer itself. `services/tests/test_notebook_has_no_local_backend.py`
+keeps the fallback from growing back.
+
+The steps that legitimately report `LOCAL` are file writes, re-display of a
+reading already fetched, and Pancake's own TAP adapter reshaping a screen the
+node returned. None of them touches a raster.
+
 Every step prints `LIVE` (ran against the stack), `LOCAL` (stack down, but the
 mirrored rasters were read in process), `SKIPPED` or `FAILED`, and the last cell
 prints a ledger of all of them. Nothing invents a reading to keep the narrative

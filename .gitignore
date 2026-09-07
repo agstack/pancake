@@ -61,3 +61,6 @@ dpi-demo/honduras_dds_ready.geojson
 services/pancake_services/grants/testkit/dev_keys/
 *.sdjwt
 pancake_dev.db
+
+# Names a deployment and can hold a token.
+dpi-demo/demo.env

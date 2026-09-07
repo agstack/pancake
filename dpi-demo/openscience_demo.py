@@ -29,6 +29,7 @@ about compliance is worse than a gap.
 """
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import os
@@ -41,6 +42,43 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 import requests
+
+SETTINGS_FILE = Path(__file__).resolve().parent / "demo.env"
+"""Where the notebook reads which deployment to talk to.
+
+The URLs used to default to localhost, so opening the notebook in a kernel that
+had not been handed five environment variables produced four lines of DOWN and a
+SKIPPED run -- with nothing saying that the addresses were wrong rather than the
+services. A demo whose failure mode is "everything is down" teaches the reader
+the wrong thing.
+
+Not committed, because it names a deployment and can hold a token.
+``demo.env.example`` is the committed copy with the keys and no values.
+"""
+
+
+def _load_settings(path: Path = SETTINGS_FILE) -> list[str]:
+    """Read ``KEY=value`` lines into the environment, without overriding it.
+
+    A real environment variable always wins, so a run can be pointed elsewhere
+    for one cell without editing the file.
+    """
+    if not path.is_file():
+        return []
+    loaded = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip("\"'")
+        if key and value and not os.environ.get(key):
+            os.environ[key] = value
+            loaded.append(key)
+    return loaded
+
+
+SETTINGS_LOADED = _load_settings()
 
 HUB_URL = os.environ.get("HUB_URL", "http://localhost:8000")
 NODE_URL = os.environ.get("AR2_NODE_URL", "http://localhost:8001")
@@ -179,6 +217,39 @@ def services() -> dict[str, dict[str, Any]]:
         up, detail = _reachable(url, path)
         out[name] = {"url": url, "up": up, "detail": detail}
     return out
+
+
+def mode(stack: dict[str, dict[str, Any]]) -> str:
+    """Whether the notebook can run, and if not, which of two problems it is.
+
+    Four DOWN lines against localhost mean the notebook was never told which
+    deployment to talk to. That is a different problem from an outage, and until
+    2026-09-06 it read as the same one: the URLs defaulted to localhost, so a
+    kernel that had not been handed five environment variables reported the
+    whole stack down and skipped the run.
+    """
+    if stack["terrapipe-os"]["up"]:
+        return "mode: LIVE against the hosted node"
+
+    down = [name for name, info in stack.items() if not info["up"]]
+    head = (
+        "mode: SKIPPED. Nothing here computes a reading in this process, "
+        "by design, so there is no substitute for the node."
+    )
+    local = ("localhost", "127.0.0.1")
+    if all(any(host in stack[name]["url"] for host in local) for name in down):
+        return (
+            f"{head}\n\n"
+            "Every address above is localhost, which is the default when no deployment\n"
+            "has been named. This is far more likely to be configuration than an outage:\n\n"
+            f"    cd {SETTINGS_FILE.parent}\n"
+            f"    cp demo.env.example {SETTINGS_FILE.name}   # then fill it in\n\n"
+            "and restart the kernel. A real environment variable overrides the file."
+        )
+    return (
+        f"{head}\n\nThe addresses came from settings, so this looks like a real outage.\n"
+        f"Not answering: {', '.join(down)}."
+    )
 
 
 class _NoLocalBackend:
@@ -504,6 +575,61 @@ def post(url: str, *, token: str | None = None, grant: str | None = None, **kwar
 # one place and tests/test_notebook_routes.py can check it.
 
 
+def _expired(token: str) -> bool:
+    """Whether a JWT is past its expiry, read without verifying it.
+
+    Verification is the services' job. This is only so the notebook can say "the
+    token you gave me has expired" instead of reporting four 401s, which is what
+    a stale HUB_TOKEN in a long-lived shell looks like from the output.
+    """
+    try:
+        claims = token.split(".")[1]
+        payload = json.loads(base64.urlsafe_b64decode(claims + "=" * (-len(claims) % 4)))
+    except (IndexError, ValueError, json.JSONDecodeError):
+        return False  # not a JWT we can read; let the services judge it
+    exp = payload.get("exp")
+    return bool(exp) and float(exp) <= time.time()
+
+
+def _login(email: str, password: str) -> tuple[str | None, str]:
+    """The hub's password grant, which is form-encoded rather than JSON."""
+    try:
+        response = requests.post(
+            f"{HUB_URL}/users/login",
+            data={"username": email, "password": password},
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        return None, f"the hub at {HUB_URL} could not be reached: {exc.__class__.__name__}"
+    if not response.ok:
+        return None, f"HTTP {response.status_code} {response.text[:120]}"
+    return (response.json() or {}).get("access_token"), ""
+
+
+def _register(email: str, password: str) -> tuple[bool, str]:
+    """Create the demo account if it is not there yet.
+
+    The hub wants first and last names, and omitting them is a 422 that reads
+    like a rejected password.
+    """
+    try:
+        response = requests.post(
+            f"{HUB_URL}/users/register",
+            json={
+                "email": email,
+                "password": password,
+                "first_name": "Demo",
+                "last_name": "Reader",
+                "discoverable": True,
+            },
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        return False, f"the hub could not be reached: {exc.__class__.__name__}"
+    # 400 is "already exists", which is success for our purposes.
+    return response.status_code in (200, 201, 400, 409), f"HTTP {response.status_code}"
+
+
 def hub_token() -> tuple[str | None, str]:
     """A bearer token from the hub, and how it was obtained.
 
@@ -515,17 +641,36 @@ def hub_token() -> tuple[str | None, str]:
     Returns the token and a sentence naming its source, so a cell can say which
     of the two it got rather than only whether it has one.
     """
+    # An expired HUB_TOKEN is worse than none: it produces a 401 from every
+    # authenticated call, which reads as the services refusing the demo rather
+    # than as a stale string in a long-lived shell. So it falls through to the
+    # credentials below and says why at the end.
     preset = os.environ.get("HUB_TOKEN", "").strip()
-    if preset:
-        return preset, "HUB_TOKEN from the environment"
+    if preset and not _expired(preset):
+        return preset, "HUB_TOKEN, taken as given"
+
+    email = os.environ.get("DEMO_EMAIL", "").strip()
+    password = os.environ.get("DEMO_PASSWORD", "").strip()
+    if email and password:
+        token, why = _login(email, password)
+        if token:
+            return token, f"logged in as {email}"
+        registered, detail = _register(email, password)
+        if registered:
+            token, why = _login(email, password)
+            if token:
+                return token, f"registered and logged in as {email}"
+        return None, f"could not sign in as {email}: {why or detail}"
 
     client_id = os.environ.get("DEMO_CLIENT_ID", "").strip()
     client_secret = os.environ.get("DEMO_CLIENT_SECRET", "").strip()
     if not (client_id and client_secret):
+        stale = " The HUB_TOKEN in the environment has expired." if preset else ""
         return None, (
-            "no HUB_TOKEN, and no DEMO_CLIENT_ID/DEMO_CLIENT_SECRET to exchange for one. "
-            "Authenticated calls below will be refused rather than skipped, which is the "
-            "truthful outcome"
+            f"no usable hub credential.{stale} Put DEMO_EMAIL and DEMO_PASSWORD in "
+            f"{SETTINGS_FILE.name} (see demo.env.example) and restart the kernel. "
+            "Authenticated calls below will be refused rather than skipped, which is "
+            "the truthful outcome"
         )
     try:
         r = requests.post(

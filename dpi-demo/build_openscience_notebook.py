@@ -164,6 +164,8 @@ import openscience_demo as od
 
 print(f"support module   {_HOME}")
 print(f"                 {od.forbid_local_backend()}")
+print(f"settings         {od.SETTINGS_FILE.name}: "
+      + (', '.join(od.SETTINGS_LOADED) if od.SETTINGS_LOADED else 'not read'))
 print()
 
 STACK = od.services()
@@ -173,8 +175,7 @@ print(f"{'mcp':14}       {od.MCP_URL}")
 
 NODE_UP = STACK['terrapipe-os']['up']
 print()
-print("mode:", "LIVE against the hosted node" if NODE_UP else
-      "SKIPPED (the node is not answering, and there is no local substitute)")
+print(od.mode(STACK))
 """)
 
 # ==========================================================================
