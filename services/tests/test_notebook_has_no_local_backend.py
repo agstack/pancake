@@ -15,12 +15,13 @@ from __future__ import annotations
 
 import ast
 import collections
+import inspect
+import re
 import textwrap
 import os
 import io
 import contextlib
 import pathlib
-import re
 from urllib.parse import urlparse
 import json
 import subprocess
@@ -1366,17 +1367,24 @@ def test_tracing_back_needs_the_grant_for_that_list() -> None:
     )
 
 
-def test_trace_is_the_last_section_because_it_is_a_different_question() -> None:
-    """Everything before it screens one field. This asks about a consignment."""
+def test_the_screening_narrative_runs_to_the_ledger_uninterrupted() -> None:
+    """Trace moved to its own notebook; what is left must still read in order.
+
+    Replaces a test that asserted trace sat last. It did, for the right reason
+    -- a consignment is a different question from a field -- and that reason is
+    why it is now N3's.
+    """
     built = (DEMO / "build_openscience_notebook.py").read_text()
 
-    trace = built.index("## 13. A lot, and tracing it both ways")
-    ledger = built.index("## 14. What this run actually demonstrated")
     verdicts = built.index("## 6. The four verdicts")
-    dds = built.index("## 10. Out to the regulator")
+    vintages = built.index("## 7. The same field, in three national maps")
+    dds = built.index("## 13. Out to the regulator")
+    ledger = built.index("## 16. What this run actually demonstrated")
 
-    assert verdicts < trace and dds < trace, "trace interrupts the screening narrative"
-    assert trace < ledger, "the ledger must come last; it summarises the run"
+    assert verdicts < vintages < dds < ledger
+    assert ledger == max(built.index(h) for h in re.findall(r"^## \d+\. .+$", built, re.M)), (
+        "the ledger must come last; it summarises the run"
+    )
 
 
 def test_the_sections_are_numbered_without_a_gap() -> None:
@@ -1532,3 +1540,423 @@ def test_a_grant_that_does_not_widen_the_scope_is_reported() -> None:
     ])
 
     assert any("'neighbourhood' scope rather than" in n for n in notes)
+
+
+# --------------------------------------------------------------------------
+# "The node holds nothing for this" is not a demonstration
+# --------------------------------------------------------------------------
+
+
+def test_a_node_holding_no_data_is_not_recorded_as_a_demonstration() -> None:
+    """The failure this outcome exists for.
+
+    On 2026-09-06 the NDVI and GFS steps both got 404 with reason no_data --
+    the node has neither layer for any demo field -- and the ledger recorded
+    both LIVE, because step() records LIVE unless an exception is raised.
+    """
+    od = _module()
+    state = {"outcome": od.LIVE, "detail": ""}
+
+    got, why = od.holds_data(
+        _Response(404, {"reason": "no_data", "detail": "layer ndvi_sentinel2 has no data"}), state
+    )
+
+    assert got is False
+    assert state["outcome"] == od.EMPTY
+    assert "no data" in state["detail"]
+
+
+def test_a_reading_is_still_a_reading() -> None:
+    """A check that fires on good data would make the badge meaningless."""
+    od = _module()
+    state = {"outcome": od.LIVE, "detail": ""}
+
+    got, _ = od.holds_data(_Response(200, {"value": 0.62, "layer_id": "ndvi_sentinel2"}), state)
+
+    assert got is True
+    assert state["outcome"] == od.LIVE
+
+
+def test_a_malformed_request_is_a_failure_not_an_empty_cupboard() -> None:
+    """Asking wrongly is a defect in the notebook. Different word, different fix."""
+    od = _module()
+    state = {"outcome": od.LIVE, "detail": ""}
+
+    od.holds_data(
+        _Response(422, {"reason": "invalid_request",
+                        "detail": "layer ndvi_sentinel2 partitions by day"}), state
+    )
+
+    assert state["outcome"] == od.FAILED, (
+        "a request the node rejected as malformed is filed as a bare cupboard"
+    )
+
+
+def test_a_two_hundred_that_says_no_data_is_still_no_data() -> None:
+    """The status code is not the whole answer."""
+    od = _module()
+    state = {"outcome": od.LIVE, "detail": ""}
+
+    got, _ = od.holds_data(_Response(200, {"reason": "no_data", "detail": "nothing here"}), state)
+
+    assert got is False
+    assert state["outcome"] == od.EMPTY
+
+
+def test_the_empty_outcome_is_counted_and_explained() -> None:
+    """A count that omits it would let the reader add up the wrong total."""
+    od = _module()
+    ledger = od.Ledger()
+    ledger.record("screen each field", od.LIVE)
+    ledger.record("NDVI for a field", od.EMPTY, "no data for this GeoID")
+
+    text = ledger.checklist()
+
+    assert "1 answered with no data" in text
+    assert "needs ingesting" in text
+
+
+def test_an_empty_step_does_not_get_a_ticked_box() -> None:
+    """A ticked box reads as success whatever word sits beside it."""
+    od = _module()
+    ledger = od.Ledger()
+    ledger.record("NDVI for a field", od.EMPTY, "no data")
+
+    assert ledger.checklist().startswith("[ ]")
+
+
+def test_every_step_that_reads_a_layer_classifies_the_answer() -> None:
+    """Any read can come back empty, so any read must be able to say so."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    for endpoint in ("/data/", "/forecast/"):
+        for start in _positions_of(built, endpoint):
+            cell = built[max(0, start - 1200):start + 600]
+            assert "holds_data" in cell, (
+                f"a read of {endpoint} does not classify its answer, so a node "
+                "holding nothing would be recorded as a demonstration"
+            )
+
+
+def _positions_of(text: str, needle: str) -> list[int]:
+    out, at = [], text.find(needle)
+    while at != -1:
+        out.append(at)
+        at = text.find(needle, at + 1)
+    return out
+
+
+class _Response:
+    """The two bits of a requests.Response that holds_data looks at."""
+
+    def __init__(self, status_code: int, body: dict) -> None:
+        self.status_code = status_code
+        self._body = body
+
+    def json(self) -> dict:
+        return self._body
+
+
+# --------------------------------------------------------------------------
+# N2: a verifiable draw, three vintages, and a disagreement worth keeping
+# --------------------------------------------------------------------------
+
+_LIST_ID = "aced0d668cf579b5e5c2f1a0b7d3e8c491f26a7b0d3e5f8a1c4b7d0e3f6a9c2b"
+_MEMBERS = [f"{n:064x}" for n in range(40)]
+
+
+def test_the_draw_is_the_same_for_everyone_who_holds_the_list() -> None:
+    """The whole claim. If it is not reproducible it is no better than a bottle."""
+    od = _module()
+
+    mine = od.verifiable_sample(_LIST_ID, _MEMBERS, 9)
+    yours = od.verifiable_sample(_LIST_ID, list(reversed(_MEMBERS)), 9)
+
+    assert mine == yours, "the draw depends on the order the members were handed over"
+
+
+def test_a_shuffled_population_cannot_change_the_draw() -> None:
+    """An auditor's copy of the list will not be in the drawer's order."""
+    od = _module()
+    import random
+
+    shuffled = list(_MEMBERS)
+    random.Random(7).shuffle(shuffled)
+
+    assert od.verifiable_sample(_LIST_ID, shuffled, 9) == od.verifiable_sample(
+        _LIST_ID, _MEMBERS, 9
+    )
+
+
+def test_a_different_list_draws_different_names() -> None:
+    """If the seed did not bind the draw to the population, it would prove nothing."""
+    od = _module()
+
+    other = _LIST_ID[:-1] + ("f" if _LIST_ID[-1] != "f" else "0")
+
+    assert od.verifiable_sample(other, _MEMBERS, 9) != od.verifiable_sample(
+        _LIST_ID, _MEMBERS, 9
+    )
+
+
+def test_the_draw_does_not_lean_on_pythons_random_number_generator() -> None:
+    """Its algorithm has changed before, which would void every published draw."""
+    od = _module()
+    # The docstring names the very thing being ruled out, and the function is
+    # itself called ...sample(, so both have to come off before searching.
+    body = _code_only(od.verifiable_sample) + _code_only(od._ranked)
+
+    for banned in ("random.", "Random(", ".shuffle", "random.sample"):
+        assert banned not in body, (
+            f"the draw uses {banned}, so it is only reproducible on one Python"
+        )
+    assert "hashlib.sha256" in body, "the draw is not seeded by a stable hash"
+
+
+def _code_only(function) -> str:
+    """A function's source with its docstring removed."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
+    node = tree.body[0]
+    if (node.body and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)):
+        node.body = node.body[1:]
+    return ast.unparse(tree)
+
+
+def test_the_reserves_carry_on_where_the_sample_stopped() -> None:
+    """The guide asks for spare names so absences do not shrink the sample."""
+    od = _module()
+
+    sample, reserves = od.draw_with_reserves(_LIST_ID, _MEMBERS, 9)
+
+    assert len(sample) == 9
+    assert len(sample) + len(reserves) == len(_MEMBERS)
+    assert not set(sample) & set(reserves)
+    # The reserve order is the same ranking continued, so a replacement is due
+    # to somebody in particular rather than chosen.
+    assert od.verifiable_sample(_LIST_ID, _MEMBERS, 10)[-1] == reserves[0]
+
+
+def test_everyone_in_the_population_can_be_drawn() -> None:
+    """A draw that could never pick some members is not a random sample."""
+    od = _module()
+
+    reachable = set()
+    for size in range(1, len(_MEMBERS) + 1):
+        reachable |= set(od.verifiable_sample(_LIST_ID, _MEMBERS, size))
+
+    assert reachable == set(_MEMBERS)
+
+
+def test_the_sample_sizes_are_the_guides_own_figures() -> None:
+    """Transcribed, so a disagreement with a formula is visible not silent."""
+    od = _module()
+
+    assert od.interviews_needed(1_000, one_in=10)[0] == 29
+    assert od.interviews_needed(1_000_000, one_in=10)[0] == 29
+    assert od.interviews_needed(100, one_in=10)[0] == 25
+    assert od.interviews_needed(1_000)[1] == 278
+
+
+def test_a_population_between_two_rows_is_rounded_up() -> None:
+    """Rounding down would report a sample smaller than the guide requires."""
+    od = _module()
+
+    detect, prevalence, why = od.interviews_needed(700, one_in=10)
+
+    assert (detect, prevalence) == od.interviews_needed(1_000, one_in=10)[:2]
+    assert "1,000 row" in why
+
+
+def test_a_share_the_guide_does_not_tabulate_is_refused() -> None:
+    """Interpolating between its rows would be this notebook's arithmetic, not the guide's."""
+    od = _module()
+
+    with pytest.raises(ValueError, match="tabulates"):
+        od.interviews_needed(1_000, one_in=3)
+
+
+def test_a_bare_code_is_resolved_from_the_publishers_own_legend() -> None:
+    """Both vintages, because the same number means different things in each."""
+    od = _module()
+
+    assert od.resolve_label("icf_honduras_forest_cover_2018", "unlabelled_12") == (
+        "Cafetales", True
+    )
+    assert od.resolve_label("icf_honduras_forest_cover_2014", "unlabelled_14") == (
+        "Cafetales", True
+    )
+
+
+def test_the_codebooks_disagree_where_the_publishers_legends_disagree() -> None:
+    """The finding this section exists for, pinned so a tidy-up cannot erase it.
+
+    Code 12 is Cafetales in 2018 and Pastos/Cultivos in 2014. If these ever
+    agree, either a transcription was wrong or the trap has gone away, and
+    both are worth stopping for.
+    """
+    od = _module()
+
+    assert od.ICF_CODEBOOKS["icf_honduras_forest_cover_2018"][12] == "Cafetales"
+    assert od.ICF_CODEBOOKS["icf_honduras_forest_cover_2014"][12] == "Pastos/Cultivos"
+    assert od.ICF_CODEBOOKS["icf_honduras_forest_cover_2014"][14] == "Cafetales"
+
+
+def test_a_code_no_legend_covers_is_left_as_it_came() -> None:
+    """Inventing a label to fill a gap is how a wrong one becomes permanent."""
+    od = _module()
+
+    assert od.resolve_label("icf_honduras_forest_cover_2014", "unlabelled_99") == (
+        "unlabelled_99", False
+    )
+    assert od.resolve_label("icf_honduras_forest_cover_2024", "cafe") == ("cafe", False)
+
+
+def test_a_code_this_notebook_cannot_name_is_said_out_loud() -> None:
+    """The bug this replaced: unnameable read as "the node has declared it"."""
+    od = _module()
+
+    notes = od._what_the_vintages_show([
+        {"year": "2014", "layer_id": "icf_honduras_forest_cover_2014",
+         "classes": {"unlabelled_1": 1.0}, "why": ""},
+    ])
+
+    assert any("cannot name" in note for note in notes)
+    assert not any("legends have been declared" in note for note in notes), (
+        "a code this notebook cannot resolve is reported as one the node has declared"
+    )
+
+
+def test_the_unchanged_crop_case_is_only_claimed_when_the_run_shows_it() -> None:
+    od = _module()
+    coffee_everywhere = [
+        {"year": "2014", "layer_id": "icf_honduras_forest_cover_2014",
+         "classes": {"unlabelled_14": 0.99}, "why": ""},
+        {"year": "2018", "layer_id": "icf_honduras_forest_cover_2018",
+         "classes": {"unlabelled_12": 1.0}, "why": ""},
+        {"year": "2024", "layer_id": "icf_honduras_forest_cover_2024",
+         "classes": {"cafe": 0.96}, "why": ""},
+    ]
+
+    assert any("did not happen" in n for n in od._what_the_vintages_show(coffee_everywhere))
+
+    pasture = list(coffee_everywhere)
+    pasture[2] = {"year": "2024", "layer_id": "icf_honduras_forest_cover_2024",
+                  "classes": {"pastizales": 0.76}, "why": ""}
+    notes = od._what_the_vintages_show(pasture)
+    assert any("not in\nevery vintage" in n or "not in every vintage" in n for n in notes)
+    assert not any("did not happen" in n for n in notes)
+
+
+def test_the_vintage_section_reads_the_field_it_is_about() -> None:
+    """It ran on whichever field came first, which was pasture, and showed nothing."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+    section = built[built.index("read three vintages"):built.index("A population, and a draw")]
+
+    assert "the_coffee_field" in section
+    assert "COFFEE_ID" in section
+    assert "SUBJECT_ID" not in section, (
+        "the coffee sections read whichever field the notebook happened to pick first"
+    )
+
+
+def test_the_coffee_field_is_chosen_by_asking_not_by_name() -> None:
+    """Hard-coding it would let a change to the demo fields go unnoticed."""
+    od = _module()
+    body = inspect.getsource(od.the_coffee_field)
+
+    assert "compliant_coffee" not in body
+    assert "icf_honduras_forest_cover_2024" in body
+
+
+def test_shade_grown_coffee_read_as_forest_is_named_not_scored() -> None:
+    """The guide's false positive. A number here would get averaged into something."""
+    od = _module()
+
+    verdict = od.agroforestry_case({
+        "national": {"cafe": 0.963},
+        "global": {"esa_worldcover": {"tree_cover": 0.999}, "hansen_treecover_2000": 71.2},
+        "why": "",
+    })
+
+    assert "AGROFORESTRY FALSE-POSITIVE" in verdict
+    assert "agroforestry is not forest" in verdict
+    assert "needs a human" in verdict
+
+
+def test_a_field_that_is_not_agroforestry_is_not_flagged() -> None:
+    """A warning that fires on everything is one nobody reads."""
+    od = _module()
+
+    assert not od.agroforestry_case({
+        "national": {"pastizales": 0.76},
+        "global": {"esa_worldcover": {"tree_cover": 0.975}},
+        "why": "",
+    }), "pasture under canopy is reported as the shade-coffee case"
+
+    assert not od.agroforestry_case({
+        "national": {"cafe": 0.96},
+        "global": {"esa_worldcover": {"grassland": 0.9, "tree_cover": 0.1}},
+        "why": "",
+    }), "coffee with no canopy reading is reported as a disagreement"
+
+
+def test_the_notebook_does_not_invent_a_pest_layer() -> None:
+    """Asked for, absent, and the absence is the finding.
+
+    GBIF holds two records of coffee leaf rust for the whole of Honduras. A
+    risk score built on that would look like the others and mean nothing.
+    """
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    assert "no open field-level pest surveillance layer" in built
+    for invented in ("pest_risk", "rust_risk", "disease_pressure", "pest_score"):
+        assert invented not in built, f"a {invented} layer appears from nowhere"
+
+
+def test_the_agent_is_shown_being_refused_and_then_allowed() -> None:
+    """The same tool, differing only in the credential. That is the whole point."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+    turn = built[built.index("ask the node four questions"):]
+    turn = turn[:turn.index('""")')]
+
+    reads = turn.count('"read_layer"')
+    assert reads == 2, f"the grant/no-grant contrast needs two read_layer calls, found {reads}"
+    assert '"field_grant": GRANT' in turn
+    assert turn.index('"read_layer"') < turn.index('"field_grant": GRANT'), (
+        "the grant is presented before the refusal, so the contrast reads backwards"
+    )
+
+
+def test_the_agent_turn_is_not_a_language_model() -> None:
+    """A model call would make the committed output a record of what a model said."""
+    od = _module()
+    body = inspect.getsource(od.ask_the_node)
+
+    for absent in ("openai", "anthropic", "OPENAI_API_KEY", "completion"):
+        assert absent not in body
+
+
+def test_the_notebook_points_at_its_two_companions() -> None:
+    """Split into three, so each has to say where the rest went."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    assert "ar2_field_identity_demo.ipynb" in built
+    assert "traceability_demo.ipynb" in built
+
+
+def test_trace_has_moved_out_to_its_own_notebook() -> None:
+    """A different question, and it was the last section for that reason."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    assert "traceback" not in built.lower().replace("trace-back", "")
+    assert "inclusion_proof" not in built
+
+
+def test_the_sections_are_numbered_in_the_order_they_are_read() -> None:
+    """Three were inserted and two moved out; a stale number sends readers astray."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    numbers = [int(n) for n in re.findall(r"^## (\d+)\. ", built, re.M)]
+
+    assert numbers == list(range(len(numbers))), f"sections run {numbers}"

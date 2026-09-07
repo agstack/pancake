@@ -125,6 +125,29 @@ DEMO_FIELDS = Path(
 
 LIVE, LOCAL, SKIPPED, FAILED = "LIVE", "LOCAL", "SKIPPED", "FAILED"
 
+EMPTY = "EMPTY"
+"""The service answered, and its answer was that it holds nothing.
+
+A fifth outcome, because the first four could not say this and the ledger
+therefore said something false. On 2026-09-06 the NDVI and GFS steps both got
+``404 {"reason": "no_data"}`` -- the node has neither layer for any demo field
+-- and both were recorded LIVE, because ``step`` records LIVE unless an
+exception is raised and a 404 is not an exception. A reader scanning the
+ledger saw
+
+    [x] NDVI for a field          LIVE
+    [x] GFS forecast for a field  LIVE
+
+and concluded that vegetation and weather had been demonstrated. They had not.
+
+None of the other four fits. It is not LIVE: nothing was shown. It is not
+FAILED: nothing is broken, and calling a correct "I have no data" a failure
+would train the reader to ignore failures. It is not SKIPPED: the call was
+made. It is not LOCAL. The distinction it draws -- *the request worked and the
+cupboard is bare* -- is exactly the one that tells you to go and fill the
+cupboard, so it needs its own word.
+"""
+
 
 # --------------------------------------------------------------------------
 # the ledger
@@ -174,15 +197,24 @@ class Ledger:
         if not self.steps:
             return "No steps were recorded."
         width = max(len(s.name) for s in self.steps)
-        mark = {LIVE: "[x]", LOCAL: "[x]", SKIPPED: "[ ]", FAILED: "[!]"}
+        # EMPTY gets an unticked box. It is not a success, and a ticked box is
+        # read as one however the word beside it reads.
+        mark = {LIVE: "[x]", LOCAL: "[x]", EMPTY: "[ ]", SKIPPED: "[ ]", FAILED: "[!]"}
         lines = [f"{mark[s.outcome]} {s.name.ljust(width)}  {s.outcome:8}{('  ' + s.detail) if s.detail else ''}"
                  for s in self.steps]
-        counts = {o: sum(1 for s in self.steps if s.outcome == o) for o in (LIVE, LOCAL, SKIPPED, FAILED)}
+        counts = {o: sum(1 for s in self.steps if s.outcome == o)
+                  for o in (LIVE, LOCAL, EMPTY, SKIPPED, FAILED)}
         lines.append("")
         lines.append(
             f"{counts[LIVE]} against live services, {counts[LOCAL]} against local data, "
-            f"{counts[SKIPPED]} skipped, {counts[FAILED]} failed."
+            f"{counts[EMPTY]} answered with no data, {counts[SKIPPED]} skipped, "
+            f"{counts[FAILED]} failed."
         )
+        if counts[EMPTY]:
+            lines.append(
+                "A step marked EMPTY reached the node and the node holds nothing for it. "
+                "Nothing is broken and nothing was demonstrated; the layer needs ingesting."
+            )
         if counts[SKIPPED]:
             lines.append("A skipped step demonstrated nothing. Bring the stack up to close the gap.")
         if counts[FAILED]:
@@ -218,6 +250,46 @@ def skip(state: dict[str, Any], reason: str) -> None:
     state["outcome"] = SKIPPED
     state["detail"] = reason
     print(f"  skipped: {reason}")
+
+
+def empty(state: dict[str, Any], reason: str) -> None:
+    """The call was made and the node holds no data for it. See EMPTY."""
+    state["outcome"] = EMPTY
+    state["detail"] = reason
+    print(f"  no data: {reason}")
+
+
+def holds_data(response, state: dict[str, Any] | None = None) -> tuple[bool, str]:
+    """Whether a read actually returned a reading, and why not if it did not.
+
+    terrapipe-os is careful to distinguish "I have no value for you" from "your
+    request was wrong", and answers the first with 404 and ``reason: no_data``.
+    That is good API design and it defeated the ledger, which treats any
+    non-exception as a success. So the classification happens here, once, and
+    the steps that read data call it rather than each deciding for itself.
+
+    Passing ``state`` marks the step EMPTY as a side effect, which is the
+    common case and keeps the calling cell to one line.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+
+    if response.status_code == HTTP_OK and body.get("reason") != "no_data":
+        return True, "the node returned a reading"
+
+    why = body.get("detail") or body.get("reason") or f"HTTP {response.status_code}"
+    if state is not None:
+        # A wrong request is a defect in this notebook, not a bare cupboard,
+        # and must not be filed under the same word.
+        if body.get("reason") == "invalid_request":
+            state["outcome"] = FAILED
+            state["detail"] = str(why)[:200]
+            print(f"  bad request: {why}")
+        else:
+            empty(state, str(why)[:200])
+    return False, str(why)
 
 
 def local(state: dict[str, Any], reason: str) -> None:
@@ -1924,3 +1996,450 @@ def run_or_skip(state: dict[str, Any], condition: bool, reason: str, thunk: Call
         skip(state, reason)
         return None
     return thunk()
+
+
+# ==========================================================================
+# Legality verification: a population, and a draw anyone can check
+# ==========================================================================
+
+DETECTION_TABLE = {
+    # Interviews needed to detect a problem affecting one in N of the
+    # population, nineteen times in twenty. From the legality verification
+    # guide (survey based), DRAFT, page 10. Transcribed rather than computed,
+    # so that the notebook shows the guide's own figures and any disagreement
+    # with a formula is visible rather than papered over.
+    #                 1 in 5  1 in 7  1 in 10  1 in 20
+    100:             (13,     17,     25,      45),
+    200:             (13,     18,     27,      51),
+    500:             (14,     19,     28,      56),
+    1_000:           (14,     19,     29,      57),
+    2_000:           (14,     19,     29,      58),
+    5_000:           (14,     19,     29,      59),
+    20_000:          (14,     19,     29,      59),
+    50_000:          (14,     19,     29,      59),
+    100_000:         (14,     19,     29,      59),
+    1_000_000:       (14,     19,     29,      59),
+}
+
+AFFECTED_SHARES = (5, 7, 10, 20)
+
+PREVALENCE_TABLE = {
+    # Interviews needed for a percentage within five points of the truth.
+    100: 80, 200: 132, 500: 217, 1_000: 278, 2_000: 322,
+    5_000: 357, 20_000: 377, 50_000: 381, 100_000: 383, 1_000_000: 384,
+}
+
+
+def interviews_needed(population: int, one_in: int = 10) -> tuple[int, int, str]:
+    """How many interviews to detect a problem, and to measure how common it is.
+
+    The counterintuitive part, and the reason for showing it: both numbers stop
+    growing. Detecting a problem affecting one farm in ten takes 29 interviews
+    at a population of a thousand and 29 at a million. Sampling cost is set by
+    the confidence wanted, not by the size of the supply base -- which is the
+    answer to "we have ten thousand smallholders, this cannot be done".
+    """
+    if one_in not in AFFECTED_SHARES:
+        raise ValueError(f"the guide tabulates {AFFECTED_SHARES}, not 1 in {one_in}")
+    # The next tabulated population at or above this one: the guide's tables are
+    # steps, and rounding down would understate the sample.
+    banded = min((p for p in DETECTION_TABLE if p >= population), default=max(DETECTION_TABLE))
+    detect = DETECTION_TABLE[banded][AFFECTED_SHARES.index(one_in)]
+    prevalence = PREVALENCE_TABLE[min((p for p in PREVALENCE_TABLE if p >= population),
+                                      default=max(PREVALENCE_TABLE))]
+    return detect, prevalence, (
+        f"population {population:,}, read off the guide's {banded:,} row"
+    )
+
+
+def verifiable_sample(list_id: str, members: list[str], size: int) -> list[str]:
+    """Draw ``size`` members, so that anyone holding the list can check the draw.
+
+    Step 7 of the legality guide requires the selection be random, and Step 8
+    requires reporting how it was made. The methods it offers are "a random
+    number generator, drawing lots, spinning a bottle, or any equivalent
+    method". Every one of them is unfalsifiable after the fact: an auditor
+    handed a list of twenty-nine farms cannot tell a spun bottle from a
+    convenient choice, and the guide's own reporting requirement therefore
+    collects an assertion rather than evidence.
+
+    A draw seeded by the list's own identifier is different in kind. The
+    identifier is derived from the membership, so it is fixed before the draw
+    and cannot be edited to suit it; and the draw is a pure function of that
+    identifier, so anybody holding the same list recomputes the same names and
+    a substitution shows up immediately.
+
+    Each member is scored SHA-256(list_id || member) and the lowest scores are
+    taken. Sorting by a hash of the pair rather than shuffling with a seeded
+    generator keeps the result independent of Python's RNG, which is an
+    implementation detail that has changed before and would silently invalidate
+    every previously published draw.
+
+    The full ranking is returned to the caller by ``draw_with_reserves``: the
+    guide asks for more names than needed, so that absences do not push the
+    sample below the size set in Step 5.
+    """
+    return [member for _, member in _ranked(list_id, members)][:size]
+
+
+def _ranked(list_id: str, members: list[str]) -> list[tuple[str, str]]:
+    """(score, member) for every member, lowest score first."""
+    import hashlib  # noqa: PLC0415
+
+    scored = [
+        (hashlib.sha256(f"{list_id}:{member}".encode()).hexdigest(), member)
+        for member in members
+    ]
+    # Sorted on the score first and the member second, so that two members
+    # colliding on a score still order deterministically rather than by the
+    # order they happened to arrive in.
+    return sorted(scored)
+
+
+def draw_with_reserves(list_id: str, members: list[str], size: int) -> tuple[list[str], list[str]]:
+    """The sample, and the reserves to fall back on, in the order to use them.
+
+    Reserves are the next names in the same ranking rather than a second draw,
+    so replacing an absentee does not need a new seed and cannot be used to
+    steer the sample: whoever checks the draw recomputes the whole ranking and
+    sees which replacement was due.
+    """
+    ranking = [member for _, member in _ranked(list_id, members)]
+    return ranking[:size], ranking[size:]
+
+
+def show_draw(list_id: str, members: list[str], sample: list[str], reserves: list[str]) -> None:
+    """The draw, and the recipe for checking it."""
+    print(f"population        {len(members)} fields in list {list_id[:16]}...")
+    print(f"drawn             {len(sample)}")
+    print(f"held in reserve   {len(reserves)}")
+    print()
+    print("  the draw, in the order the ranking put them:")
+    for position, member in enumerate(sample, start=1):
+        print(f"    {position:3}. {member[:24]}...")
+    if reserves:
+        print(f"    next in line: {reserves[0][:24]}...")
+    print()
+    print("  to check it, recompute: sort the members by SHA-256(list_id + ':' + geo_id)")
+    print("  and take the first n. The list_id is derived from the membership, so it")
+    print("  was fixed before the draw and cannot be edited to suit it.")
+
+
+# ==========================================================================
+# The same field, across three national vintages
+# ==========================================================================
+
+ICF_VINTAGES = ("icf_honduras_forest_cover_2014",
+                "icf_honduras_forest_cover_2018",
+                "icf_honduras_forest_cover_2024")
+
+ICF_CODEBOOKS: dict[str, dict[int, str]] = {
+    # Only the codes this notebook actually resolves. Transcribed from the
+    # publisher's own legends in Rajat's T13 run of 2026-09-07: the 2018 names
+    # from the sidecar .dbf, the 2014 names from the GDAL raster attribute
+    # table inside class_rapideye_hn_05ha.img.
+    #
+    # Kept here, and marked as a stopgap, because the node should be declaring
+    # these. It answers `unlabelled_12` and `unlabelled_14` today, which is the
+    # correct thing to say when a legend has not been declared -- inventing a
+    # label to satisfy a schema is how a wrong one becomes permanent. The fix
+    # belongs in the layer definitions, not in a demo.
+    "icf_honduras_forest_cover_2018": {
+        10: "Pino Plagado", 11: "Arboles Dispersos", 12: "Cafetales",
+        13: "Frutales", 14: "Vegetación Secundaria Húmeda",
+        15: "Vegetación Secundaria Decidua", 16: "Sabanas",
+        17: "Palma Africana", 18: "Otras especies de Palma", 19: "Musácea",
+    },
+    "icf_honduras_forest_cover_2014": {
+        12: "Pastos/Cultivos", 13: "Sabanas", 14: "Cafetales",
+        15: "Palma Africana",
+    },
+}
+"""Why the same number means different things in different years.
+
+Code 12 is Cafetales in 2018 and Pastos/Cultivos in 2014. Cafetales is 14 in
+2014, where 14 is Vegetación Secundaria Húmeda in 2018. Of the 26 codes present
+in both vintages, three carry the same label. Subtracting one year from another
+by raw code reads coffee as pasture, and the arithmetic gives no sign of it.
+"""
+
+COFFEE_LABELS = {"Cafetales", "cafe", "café"}
+
+
+def resolve_label(layer_id: str, label: str) -> tuple[str, bool]:
+    """Turn ``unlabelled_12`` into a class name, where the vintage is known.
+
+    Returns the label and whether it had to be resolved here rather than being
+    declared by the node, because that difference is the point of the section
+    it appears in.
+    """
+    if not label.startswith("unlabelled_"):
+        return label, False
+    try:
+        code = int(label.removeprefix("unlabelled_"))
+    except ValueError:
+        return label, False
+    named = ICF_CODEBOOKS.get(layer_id, {}).get(code)
+    return (named, True) if named else (label, False)
+
+
+def vintages(geo_id: str, token: str, grant: str | None) -> list[dict[str, Any]]:
+    """What the national map called this field, in each year it was made."""
+    readings = []
+    for layer_id in ICF_VINTAGES:
+        response = get(f"{TERRAPIPE_OS_URL}/data/{geo_id}/{layer_id}", token=token, grant=grant)
+        got, why = holds_data(response)
+        year = layer_id[-4:]
+        if not got:
+            readings.append({"year": year, "layer_id": layer_id, "classes": {}, "why": why})
+            continue
+        classes = (response.json() or {}).get("value") or {}
+        readings.append({"year": year, "layer_id": layer_id, "classes": classes, "why": ""})
+    return readings
+
+
+def show_vintages(readings: list[dict[str, Any]]) -> None:
+    """The three vintages side by side, with the codes resolved where they can be."""
+    print(f"{'year':6} {'as the node answers':30} {'what the code means':32} share")
+    for reading in readings:
+        if not reading["classes"]:
+            print(f"{reading['year']:6} {'-':30} {reading['why'][:32]:32} -")
+            continue
+        for raw, share in sorted(reading["classes"].items(), key=lambda kv: -kv[1]):
+            named, resolved = resolve_label(reading["layer_id"], raw)
+            note = named if resolved else ("as declared" if named == raw else named)
+            print(f"{reading['year']:6} {raw[:30]:30} {note[:32]:32} {share:.1%}")
+        print()
+
+    for note in _what_the_vintages_show(readings):
+        print(f"  NOTE: {note}")
+
+
+def _what_the_vintages_show(readings: list[dict[str, Any]]) -> list[str]:
+    """Whether the story the section tells is the story this run produced."""
+    notes = []
+    coffee_years: list[str] = []
+    bare_number_years: list[str] = []
+    unresolved: list[tuple[str, str]] = []
+
+    for reading in readings:
+        for raw, share in reading["classes"].items():
+            named, resolved = resolve_label(reading["layer_id"], raw)
+            if share > 0.5 and named in COFFEE_LABELS:  # noqa: PLR2004
+                coffee_years.append(reading["year"])
+            # Three states, not two. The node answered with a bare number; this
+            # module could put a name to it; neither. Collapsing the last two
+            # made "unlabelled_1, which is not in the partial codebook here"
+            # print as "the node has declared its legends", which is the
+            # opposite of what the run showed.
+            if raw.startswith("unlabelled_"):
+                bare_number_years.append(reading["year"])
+                if not resolved:
+                    unresolved.append((reading["year"], raw))
+
+    if len(set(coffee_years)) == len(ICF_VINTAGES):
+        notes.append(
+            "every vintage calls this field coffee, and the older two say so with a bare "
+            "number. A comparison by raw code would read land-use changes that did not happen."
+        )
+    elif coffee_years:
+        notes.append(
+            f"coffee is the majority class in {', '.join(sorted(set(coffee_years)))} but not in "
+            "every vintage, so this field does not illustrate the unchanged-crop case."
+        )
+    if not bare_number_years:
+        notes.append(
+            "no vintage came back with a bare number, so the node's legends have been declared "
+            "since this was written and this section no longer shows what it describes."
+        )
+    if unresolved:
+        listed = ", ".join(f"{code} in {year}" for year, code in sorted(set(unresolved))[:4])
+        notes.append(
+            f"the node answered with codes this notebook cannot name: {listed}. Only the codes "
+            "needed for the fields shown here were transcribed from the publisher's legends; "
+            "the rest wait on the node declaring them, which is where they belong."
+        )
+    return notes
+
+
+# ==========================================================================
+# When the national map and a global product disagree
+# ==========================================================================
+
+GLOBAL_FOREST_LAYERS = ("esa_worldcover", "hansen_treecover_2000")
+
+
+def national_against_global(geo_id: str, token: str, grant: str | None) -> dict[str, Any]:
+    """What the national crop map says, beside what the global products say.
+
+    The legality guide names this case directly: *the potential for false
+    positives; agroforestry systems, including where crops are grown under tree
+    cover, are not to be considered forests.* Honduran coffee is largely
+    shade-grown, so a global canopy product reads the shade trees as forest and
+    their removal as deforestation. Reported as a verdict that is an accusation
+    against a farmer; reported as a disagreement it is the follow-up case the
+    guide asks for.
+    """
+    out: dict[str, Any] = {"national": {}, "global": {}, "why": ""}
+
+    national = get(f"{TERRAPIPE_OS_URL}/data/{geo_id}/icf_honduras_forest_cover_2024",
+                   token=token, grant=grant)
+    got, why = holds_data(national)
+    if got:
+        out["national"] = (national.json() or {}).get("value") or {}
+    else:
+        out["why"] = why
+
+    for layer_id in GLOBAL_FOREST_LAYERS:
+        response = get(f"{TERRAPIPE_OS_URL}/data/{geo_id}/{layer_id}", token=token, grant=grant)
+        got, why = holds_data(response)
+        out["global"][layer_id] = (response.json() or {}).get("value") if got else None
+    return out
+
+
+def show_disagreement(reading: dict[str, Any]) -> None:
+    """The national reading, the global readings, and what to make of the pair."""
+    national = reading["national"]
+    if not national:
+        print(f"  the national map returned nothing: {reading['why']}")
+        return
+
+    crop, share = max(national.items(), key=lambda kv: kv[1])
+    print(f"  national map (ICF 2024)   {crop} over {share:.1%} of the field")
+    for layer_id, value in reading["global"].items():
+        if value is None:
+            print(f"  {layer_id:25} no reading")
+        elif isinstance(value, dict):
+            top, top_share = max(value.items(), key=lambda kv: kv[1])
+            print(f"  {layer_id:25} {top} over {top_share:.1%}")
+        else:
+            print(f"  {layer_id:25} {value:.1f}")
+
+    if verdict := agroforestry_case(reading):
+        print()
+        print(f"  {verdict}")
+
+
+def agroforestry_case(reading: dict[str, Any]) -> str:
+    """The guide's named false positive, if this field is one.
+
+    Deliberately not a score. The whole point is that neither product is wrong
+    and the disagreement is the finding, so this returns the sentence a human
+    has to act on rather than a number that would be averaged into something.
+    """
+    national = reading["national"]
+    if not national:
+        return ""
+    crop, share = max(national.items(), key=lambda kv: kv[1])
+    if crop.lower() not in {c.lower() for c in COFFEE_LABELS} or share <= 0.5:  # noqa: PLR2004
+        return ""
+
+    canopy = reading["global"].get("esa_worldcover") or {}
+    tree_share = canopy.get("tree_cover", 0) if isinstance(canopy, dict) else 0
+    if tree_share <= 0.5:  # noqa: PLR2004
+        return ""
+
+    return (
+        f"AGROFORESTRY FALSE-POSITIVE CASE. The national crop map calls this field "
+        f"{crop} over {share:.0%} of its area; the global land-cover product calls the "
+        f"same ground tree cover over {tree_share:.1%}. Both are right: this is "
+        f"shade-grown coffee. The guide is explicit that agroforestry is not forest, so "
+        f"a canopy change here needs a human, not a verdict."
+    )
+
+
+# ==========================================================================
+# Asking the node as an agent would
+# ==========================================================================
+
+
+def ask_the_node(script: list[tuple[str, str, dict[str, Any]]], token: str | None = None):
+    """Run a scripted sequence of MCP tool calls and return the exchange.
+
+    A scripted turn rather than a language model. A model call needs a key,
+    costs money, and returns something different every run, so the committed
+    output would stop being a record of what the node does and become a record
+    of what a model said about it. What is worth demonstrating here is the tool
+    surface -- that an agent can reach this node, choose a tool by reading its
+    description, and get back something structured enough to answer with.
+
+    The questions are written by hand and the answers are not: each is the
+    node's own JSON, rendered.
+    """
+    import httpx  # noqa: PLC0415
+    from mcp.client.session import ClientSession  # noqa: PLC0415
+    from mcp.client.streamable_http import streamable_http_client  # noqa: PLC0415
+
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    async def converse():
+        exchange = []
+        async with httpx.AsyncClient(headers=headers, timeout=120) as http:
+            async with streamable_http_client(MCP_URL, http_client=http) as streams:
+                async with ClientSession(streams[0], streams[1]) as session:
+                    await session.initialize()
+                    for question, tool, arguments in script:
+                        try:
+                            result = await session.call_tool(tool, arguments)
+                            answer = "\n".join(
+                                getattr(item, "text", "") for item in result.content
+                            )
+                        except Exception as exc:  # noqa: BLE001 - reported in the transcript
+                            answer = f"{type(exc).__name__}: {exc}"
+                        exchange.append((question, tool, arguments, answer))
+        return exchange
+
+    return run_async(converse)
+
+
+def show_exchange(exchange, limit: int = 460) -> None:
+    """The scripted turn, rendered as the conversation it stands in for."""
+    for question, tool, arguments, answer in exchange:
+        named = ", ".join(f"{k}={_short(v)}" for k, v in arguments.items())
+        print(f"\n  ask   {question}")
+        print(f"  tool  {tool}({named})")
+        body = _readable_answer(answer)
+        for line in body.splitlines()[:14]:
+            print(f"        {line[:100]}")
+        if len(body) > limit:
+            print(f"        ... ({len(body)} characters in all)")
+
+
+def _short(value: Any, keep: int = 18) -> str:
+    text = str(value)
+    return text if len(text) <= keep else f"{text[:keep]}..."
+
+
+def _readable_answer(answer: str) -> str:
+    """The tool's reply, pretty-printed if it is JSON and left alone if not."""
+    try:
+        return json.dumps(json.loads(answer), indent=2)[:1400]
+    except (ValueError, TypeError):
+        return answer[:1400]
+
+
+def the_coffee_field(geo_ids: dict[str, str], token: str, grant: str | None) -> tuple[str, str]:
+    """The field the national map calls coffee, for the sections about coffee.
+
+    Chosen by asking rather than by hard-coding a name, so that changing the
+    demo fields cannot leave a section quietly illustrating something else.
+    Sections 7 and 8 are about shade-grown coffee specifically -- the codebook
+    trap and the agroforestry false positive both need a coffee field -- and
+    running them on whichever field came first showed a pasture field and drew
+    no conclusion.
+    """
+    for name, geo_id in geo_ids.items():
+        if not geo_id:
+            continue
+        response = get(f"{TERRAPIPE_OS_URL}/data/{geo_id}/icf_honduras_forest_cover_2024",
+                       token=token, grant=grant)
+        got, _ = holds_data(response)
+        if not got:
+            continue
+        classes = (response.json() or {}).get("value") or {}
+        if not classes:
+            continue
+        top, share = max(classes.items(), key=lambda kv: kv[1])
+        if top.lower() in {c.lower() for c in COFFEE_LABELS} and share > 0.5:  # noqa: PLR2004
+            return geo_id, f"{name}, which ICF's 2024 map calls {top} over {share:.0%} of its area"
+    return "", "no demo field is majority coffee in the 2024 national map"

@@ -40,16 +40,30 @@ def code(text: str) -> None:
 md("""
 # Open science on a GeoID
 
-### Deforestation, vegetation and weather for a field, from public data, with the consent that governs it
+### Reading public science data for a field, and knowing what the answer is worth
 
 This notebook walks one question end to end: **can a buyer show that the coffee
 in a container did not come from land cleared after 2020?**
 
-Answering it touches every part of the DPI, which is why it makes a good tour.
-A boundary has to become a durable identity. Somebody has to consent to that
-identity being resolved to a location. Public science data has to be readable
-for that location. The answer has to arrive with enough context to be audited,
-and end up in the form a regulator accepts.
+It is the second of three, and each answers a different question:
+
+| | question | where |
+|---|---|---|
+| **1. Field identity** | when is a boundary the same field? | `ar2_field_identity_demo.ipynb` |
+| **2. Open science** ← you are here | what can public data say about it? | this notebook |
+| **3. Traceability** | where did this lot come from, and who may ask? | `traceability_demo.ipynb` |
+
+They stand alone, so identity and consent appear briefly here — enough to
+follow the argument — and are taken apart properly in the first. Sections 3 to
+5 are the summary; if a GeoID or a grant is unfamiliar, start there.
+
+What this notebook is actually about is the part in between: **public science
+data has to be readable for a location, and the answer has to arrive with
+enough context to be audited.** Most of what follows is about that second
+clause. A reading with no scope, no provenance and no account of what was
+missing is not evidence, however precise the number looks — and four of the
+sections below exist because a plausible number turned out to mean something
+other than what it appeared to.
 
 Four repositories are involved and each does one thing:
 
@@ -794,11 +808,121 @@ else:
 """)
 
 # ==========================================================================
+# 7. The same field, across three national vintages
+# ==========================================================================
+
+md("""
+## 7. The same field, in three national maps
+
+The screen above reads global products. Honduras publishes its own, and the
+node mirrors three vintages of it: 2014, 2018 and 2024. Asking all three of one
+field is the closest thing here to a time series, and it turns out to be a
+lesson about identity rather than about land.
+""")
+
+code("""
+with od.step("read three vintages of the national map") as s:
+    # The coffee field, not whichever came first. This section and the next are
+    # about shade-grown coffee, and run on a pasture field they showed a pasture
+    # field and drew no conclusion.
+    COFFEE_ID, which = od.the_coffee_field(GEOIDS, HUB_TOKEN, GRANT)
+    print(f"  reading {which}")
+    if NODE_UP and COFFEE_ID:
+        VINTAGES = od.vintages(COFFEE_ID, HUB_TOKEN, GRANT)
+        if not any(v['classes'] for v in VINTAGES):
+            od.empty(s, "no vintage returned a reading")
+    else:
+        od.skip(s, which if not COFFEE_ID else "the node is not answering")
+        VINTAGES = []
+
+if VINTAGES:
+    print()
+    od.show_vintages(VINTAGES)
+""")
+
+md("""
+Three readings of one field, and the crop never changed. What changed is how
+the node can describe it.
+
+**2024 answers in words** — `cafe`, and the forest classes around it — because
+that layer's legend is declared. **2018 and 2014 answer with a bare number**,
+`unlabelled_12` and `unlabelled_14`, because theirs are not. That is the right
+thing for the node to say: inventing a label to satisfy a schema is how a wrong
+one becomes permanent, so it says what it has and no more.
+
+The two numbers are resolved above from the publisher's own legends, read out
+of the source files on 2026-09-07. And this is where it gets dangerous:
+
+| | 2014 | 2018 |
+|---|---|---|
+| code 12 | Pastos/Cultivos | **Cafetales** |
+| code 14 | **Cafetales** | Vegetación Secundaria Húmeda |
+
+The same number means different things in different years. Of the 26 codes
+present in both vintages, three carry the same label. **A forest-loss figure
+computed by subtracting one vintage from another by raw code would read this
+field as coffee that became pasture and then became coffee again** — two
+land-use changes that never happened — and the arithmetic would give no sign of
+it. The node cannot currently refuse that comparison, because nothing tells it
+the two codebooks are incompatible.
+
+That is the argument for declaring a codebook alongside a categorical layer,
+and for refusing cross-vintage arithmetic unless a crosswalk is declared. It is
+recorded as AG-001 and is not yet built.
+""")
+
+# ==========================================================================
+# 8. National against global
+# ==========================================================================
+
+md("""
+## 8. When the national map and a global product disagree
+
+Holding both a national map and a global one is not redundancy. It is the only
+way to catch the specific mistake the EUDR legality guidance names.
+
+The guide is explicit: *the potential for false positives; agroforestry
+systems, including where crops are grown under tree cover, are not to be
+considered forests.* Honduran coffee is largely shade-grown. A global canopy
+product sees the shade trees, calls the hectare forest, and calls their removal
+deforestation.
+
+Read as a verdict that is an accusation against a farmer. Read as a
+disagreement between two sources that are each right about what they measure,
+it is the follow-up case the guide asks for.
+""")
+
+code("""
+with od.step("hold the national reading against the global ones") as s:
+    if NODE_UP and COFFEE_ID:
+        DISAGREEMENT = od.national_against_global(COFFEE_ID, HUB_TOKEN, GRANT)
+        if not DISAGREEMENT['national']:
+            od.empty(s, DISAGREEMENT['why'])
+    else:
+        od.skip(s, which if not COFFEE_ID else "the node is not answering")
+        DISAGREEMENT = {}
+
+if DISAGREEMENT:
+    od.show_disagreement(DISAGREEMENT)
+""")
+
+md("""
+Neither product is wrong, and no average of them would be right. The national
+map is measuring what is grown; the land-cover product is measuring what the
+canopy looks like from orbit. On shade-grown coffee those two answers differ
+for a good reason, and the difference is the finding.
+
+This is why the screen reports per layer and per source rather than collapsing
+to a single number. A score would have to pick one of these, and picking either
+one silently is how a compliance system produces confident falsehoods.
+""")
+
+# ==========================================================================
 # 7. Absence
 # ==========================================================================
 
 md("""
-## 7. An absent layer is not a zero
+## 9. An absent layer is not a zero
 
 This is the single most important line in the design, and the easiest to get
 wrong.
@@ -863,7 +987,7 @@ elif not od.have_folium():
 # ==========================================================================
 
 md("""
-## 8. The same door, other data
+## 10. The same door, other data
 
 Deforestation is one question. The node answers any layer in its library the
 same way: a GeoID goes in, a value for that field comes out, area-weighted
@@ -883,19 +1007,125 @@ with od.step("NDVI for a field") as s:
         name = FIELDS[0]['properties']['name']
         r = od.get(f"{od.TERRAPIPE_OS_URL}/data/{GEOIDS[name]}/ndvi_sentinel2",
                    token=HUB_TOKEN, grant=GRANT, params={'time': '2026-08-21'})
+        # A 404 carrying reason: no_data is the node saying it holds nothing,
+        # which is neither a success nor a failure. Recorded LIVE until
+        # 2026-09-07, which made the ledger claim vegetation had been shown.
+        got, why = od.holds_data(r, s)
         print(od.brief(r.json()))
     else:
-        od.skip(s, "the NDVI store is on the TerraPipe network share, not mounted here")
-        print("  The layer is defined and the read path is tested; what is missing is the mirror.")
+        od.skip(s, "the node is not answering")
 
 with od.step("GFS forecast for a field") as s:
     if NODE_UP:
         name = FIELDS[0]['properties']['name']
         r = od.get(f"{od.TERRAPIPE_OS_URL}/forecast/{GEOIDS[name]}", token=HUB_TOKEN)
+        got, why = od.holds_data(r, s)
         print(od.brief(r.json()))
     else:
-        od.skip(s, "the GFS store is on the TerraPipe network share, not mounted here")
-        print("  Steps are returned as the model published them; nothing is interpolated to hourly.")
+        od.skip(s, "the node is not answering")
+""")
+
+# ==========================================================================
+# 11. Legality: a population, and a draw anyone can check
+# ==========================================================================
+
+md("""
+## 11. A population, and a draw anyone can check
+
+Deforestation is one of two things the EUDR asks. The other is legality — that
+the commodity was produced in accordance with the laws of the country of
+production — and it covers land rights, labour, tax and eight other categories
+that no satellite can see. The guidance for it is a **survey**: define the
+population, size a sample, interview at random, report how you chose.
+
+Its steps map onto what is already here more closely than anything else in
+this notebook. Step 3 defines a population; an AR2 list artifact **is** one —
+an immutable, content-derived set of GeoIDs. Step 6 requires recorded, dated,
+withdrawable consent before an interview; that is a grant. Step 4 asks which
+deforestation analyses were used and what share of the production area each
+covers; that is `/menu`, across a list.
+
+Step 5 sizes the sample, and the figures are the strongest argument in the
+document because they are counterintuitive:
+""")
+
+code("""
+with od.step("size the sample the way the guide does") as s:
+    for population in (100, 1_000, 100_000, 1_000_000):
+        detect, prevalence, _ = od.interviews_needed(population, one_in=10)
+        print(f"  population {population:>9,}   "
+              f"to detect a problem in 1 farm in 10: {detect:>3} interviews   "
+              f"to measure how common it is: {prevalence:>3}")
+    od.local(s, "the guide's own tables, transcribed")
+""")
+
+md("""
+**The numbers stop growing.** Detecting a problem affecting one farm in ten
+takes 29 interviews whether the supply base is a thousand farms or a million.
+Sampling cost is set by the confidence you want, not by the size of the base —
+which is the answer to *we have ten thousand smallholders, this cannot be
+done.* It can; it costs 29 interviews.
+
+### The part that is missing, and that a GeoID can supply
+
+Step 7 requires the selection be random and Step 8 requires reporting how it
+was made. The methods the guide offers are *a random number generator, drawing
+lots, spinning a bottle, or any equivalent method.*
+
+Every one of those is **unfalsifiable after the fact.** An auditor handed a
+list of 29 farms cannot tell a spun bottle from a convenient choice, so Step 8
+collects an assertion where it means to collect evidence. That is not a
+criticism of the guide — with a paper population there is nothing better
+available.
+
+A list artifact makes something better available. Its identifier is derived
+from its membership, so it is fixed before the draw and cannot be edited to
+suit it. Seed the draw from that identifier and the selection becomes a pure
+function of the population: anyone holding the same list recomputes the same
+names, and a substitution shows up immediately.
+""")
+
+code("""
+with od.step("draw a verifiable sample from the list") as s:
+    if CONSENT.list_id and any(GEOIDS.values()):
+        MEMBERS = [g for g in GEOIDS.values() if g]
+        WANTED, _, why = od.interviews_needed(len(MEMBERS), one_in=10)
+        # Capped at the population: this demo has four fields, and the guide's
+        # smallest tabulated population is a hundred.
+        SAMPLE, RESERVES = od.draw_with_reserves(CONSENT.list_id, MEMBERS, min(WANTED, 2))
+        od.show_draw(CONSENT.list_id, MEMBERS, SAMPLE, RESERVES)
+    else:
+        od.skip(s, "there is no list to draw from")
+""")
+
+code("""
+with od.step("show that anyone holding the list recomputes the same draw") as s:
+    if CONSENT.list_id and MEMBERS:
+        # The same function, run again from the same public inputs. An auditor
+        # runs exactly this, with no access to whoever made the original draw.
+        AGAIN = od.verifiable_sample(CONSENT.list_id, list(reversed(MEMBERS)), len(SAMPLE))
+        print(f"  the auditor's recomputation matches: {AGAIN == SAMPLE}")
+        print(f"  ...even though the members were handed over in a different order")
+
+        # And a tampered population cannot pass itself off as this one.
+        TAMPERED = od.verifiable_sample(CONSENT.list_id[:-1] + 'f', MEMBERS, len(SAMPLE))
+        print(f"  a draw seeded from a different list_id gives the same names: "
+              f"{TAMPERED == SAMPLE}")
+        od.local(s, "pure function of the list_id and the membership")
+    else:
+        od.skip(s, "there is no draw to check")
+""")
+
+md("""
+Order-independent, because the ranking is by a hash of each member rather than
+by a shuffle of the sequence; and bound to the list, because the identifier
+seeds it. Report the `list_id` and the sample size and the draw is reproducible
+by anyone, which is what Step 8 was asking for.
+
+**What this is not.** It does not make the interviews honest, and it says
+nothing about the eight legality categories themselves. It closes exactly one
+gap: whether the sample was chosen fairly is now checkable rather than
+asserted. Everything else in the guide still needs people.
 """)
 
 # ==========================================================================
@@ -903,7 +1133,7 @@ with od.step("GFS forecast for a field") as s:
 # ==========================================================================
 
 md("""
-## 9. Into the DPI: a screen becomes a BITE
+## 12. Into the DPI: a screen becomes a BITE
 
 A reading is only useful to the rest of the system once it is in the shared
 envelope. Pancake's TAP connector calls the node, wraps what comes back in a
@@ -961,7 +1191,7 @@ with od.step("turn a screen into a BITE") as s:
 # ==========================================================================
 
 md("""
-## 10. Out to the regulator: a DDS-ready file
+## 13. Out to the regulator: a DDS-ready file
 
 The last step closes the loop. A boundary drawn in a browser mapping tool —
 [GeoRoots](https://georoots.eu) is the one this is written against, though
@@ -1080,7 +1310,7 @@ with od.step("write the statement to disk") as s:
 # ==========================================================================
 
 md("""
-## 11. How a scientist adds a layer
+## 14. How a scientist adds a layer
 
 The library is not a fixed list. A researcher with a dataset can publish it,
 and the workflow is deliberately narrow: publication needs a credential issued
@@ -1118,7 +1348,7 @@ with od.step("show the publication gate") as s:
 # ==========================================================================
 
 md("""
-## 12. The same node, for an agent
+## 15. The same node, for an agent
 
 Everything above is also available over MCP, so an agent can use it without a
 human writing glue. The tools are not a second implementation — each one calls
@@ -1143,130 +1373,61 @@ with od.step("list the agent-facing tools") as s:
             print(f"  {name:22} {summary[:92]}")
 """)
 
-# ==========================================================================
-# 13. Trace: a different question entirely
-# ==========================================================================
-
 md("""
-## 13. A lot, and tracing it both ways
+### Asking it something
 
-*Everything above answered one question about one field. This section asks a
-different kind of question altogether, and it is here at the end because it
-stands on its own: the same registry and the same credentials, used for supply
-chain traceability rather than for screening. Read it as a second use case, not
-as the conclusion of the first.*
+Below is a scripted turn: the questions are written by hand, the answers are
+the node's own, over MCP. Not a language model — a model call needs a key,
+costs money and returns something different every run, so the committed output
+would stop being a record of what the node does and become a record of what a
+model said about it.
 
-Fields do not ship. Lots do — a container, a delivery, a day's harvest pooled
-from several farms — and the questions that matter are asked of the lot.
-
-A **field list** is that pooling made checkable. It is an ordered set of GeoIDs
-with a `list_id` derived from its members, so the same three fields always
-produce the same list, and a list cannot be edited after the fact without
-becoming a different list. Pancake creates one every time it issues a grant;
-you have already seen its `list_id` above.
-
-Two questions run in opposite directions through it.
-
-**Trace back** — *this container is on the dock; which farms is it from?* That is
-the due-diligence direction, and it is what a customs officer or a buyer asks.
-
-**Trace forward** — *this farm turned out to be a problem; where did its output
-go?* That is the recall direction, and it is the harder one, because it has to
-find every lot a field ever entered rather than reading one list.
-
-Both are ordinary lookups here rather than a document exchange, which is the
-whole argument for a shared identifier: the two parties do not have to agree on
-a format, only on which field they are talking about.
+Watch the third and fourth calls. They are the same tool, on the same field,
+differing only in whether a grant is presented.
 """)
 
 code("""
-LOT, LOT_CONSENT = None, None
-MEMBERS = ['compliant_coffee', 'legacy_clearing', 'post_cutoff_clearing']
-
-with od.step("pool three fields into a lot") as s:
-    if STACK['pancake']['up'] and HUB_TOKEN and all(GEOIDS.get(m) for m in MEMBERS):
-        LOT_CONSENT = od.consent_for(
-            [GEOIDS[m] for m in MEMBERS], token=HUB_TOKEN,
-            purpose='trace demonstration', name='container HNCF-2026-09',
-        )
-        LOT = LOT_CONSENT.list_id
-        print(f"  list_id  {LOT}")
-        print(f"  members  {len(MEMBERS)} fields, one of which was cleared after the cut-off")
+with od.step("ask the node four questions as an agent would") as s:
+    if not NODE_UP or not SUBJECT_ID:
+        od.skip(s, "the node is not answering")
     else:
-        od.skip(s, "Pancake is not answering, or no GeoIDs were minted")
+        EXCHANGE = od.ask_the_node([
+            ("What can you tell me about this field, and what would each answer "
+             "cost its owner in disclosure?",
+             "field_menu", {"geo_id": SUBJECT_ID}),
+
+            ("Has it been cleared since the cut-off?",
+             "screen_deforestation", {"geo_id": SUBJECT_ID}),
+
+            ("What is growing on it?",
+             "read_layer", {"geo_id": SUBJECT_ID,
+                            "layer_id": "icf_honduras_forest_cover_2024"}),
+
+            ("The same question, with the owner's grant.",
+             "read_layer", {"geo_id": SUBJECT_ID,
+                            "layer_id": "icf_honduras_forest_cover_2024",
+                            "field_grant": GRANT}),
+        ], HUB_TOKEN)
+        od.show_exchange(EXCHANGE)
 """)
 
 md("""
-### Trace back: from the container to the farms
-""")
+Three things worth taking from that.
 
-code("""
-with od.step("trace back from the lot to its fields") as s:
-    if LOT and LOT_CONSENT and LOT_CONSENT.credential:
-        BACK, why = od.trace_back(LOT, HUB_TOKEN, LOT_CONSENT.credential)
-        print(f"  {why}")
-        NAME_OF = {v: k for k, v in GEOIDS.items() if v}
-        for hop in BACK.get('hops', []):
-            print(f"\\n  depth {hop['depth']}  {len(hop.get('geoids') or [])} members")
-            for geoid in hop.get('geoids') or []:
-                print(f"      {geoid[:16]}...  {NAME_OF.get(geoid, 'a field not in this demo')}")
-    else:
-        od.skip(s, "there is no lot to trace back from")
-""")
+**The second answer came back at neighbourhood scope.** No grant was presented,
+so the node answered about the surrounding cell rather than the field, and said
+so in the payload. An agent that reported that figure as the farm's would be
+wrong, and the scope travelling with the number is what stops it.
 
-md("""
-That request carried the grant scoped to *this* list. Without it AR2 answers
-**404**, not 403 — deliberately, because a 403 would confirm to a stranger that
-the list exists. Trace is not a public index; it is a private one that the
-holder of a credential can walk.
-""")
+**The third call was refused outright** — `grant_required` — and the fourth,
+identical but for the credential, was answered. The agent surface is not a
+side door. It calls the same handlers as the HTTP routes and enforces the same
+consent, so there is no path where automating a request loosens the rules that
+apply to making it.
 
-md("""
-### Trace forward: from the farm to the containers
-""")
-
-code("""
-with od.step("trace forward from a field to the lots it entered") as s:
-    if GEOIDS.get('post_cutoff_clearing') and HUB_TOKEN:
-        SUSPECT = GEOIDS['post_cutoff_clearing']
-        LOTS, why = od.lists_containing(SUSPECT, HUB_TOKEN)
-        print(f"  the field screened at {DISCLOSURE[1][2].get('deforested_fraction', 0):.1%} cleared "
-              f"after the cut-off" if len(DISCLOSURE) > 1 else "  the field cleared after the cut-off")
-        print(f"  {why}\\n")
-        for list_id in LOTS:
-            mark = '  <- the container above' if list_id == LOT else ''
-            print(f"      {list_id[:16]}...{mark}")
-    else:
-        od.skip(s, "no GeoID was minted for the suspect field")
-""")
-
-md("""
-That is a recall in three lines. The field is the one that failed its screen;
-every lot listed is a consignment that would have to be held, and each of those
-`list_id`s can be traced back in turn to find the other farms in it.
-
-Nothing here required the farms, the exporter and the buyer to share a database
-— only to have registered the same boundaries and got the same GeoIDs, which is
-what makes the identifier worth having.
-
-### Proving membership without revealing the list
-
-A buyer may need to show a regulator that a particular field was in a particular
-lot, without disclosing the other farms in it. The list is a Merkle tree, so
-that is an inclusion proof: a handful of sibling hashes that recompute the
-`list_id` and say nothing about anyone else.
-""")
-
-code("""
-with od.step("prove one field is in the lot, without revealing the others") as s:
-    if LOT and GEOIDS.get('compliant_coffee'):
-        PROOF, why = od.inclusion_proof(LOT, GEOIDS['compliant_coffee'], HUB_TOKEN)
-        print(f"  {why}\\n")
-        for sibling in PROOF:
-            print(f"      {sibling['position']:6} {sibling['sibling'][:32]}...")
-        print(f"\\n  These recompute {LOT[:16]}... and disclose no other member.")
-    else:
-        od.skip(s, "there is no lot to prove membership in")
+**Every tool description says what the tool will not do.** An agent picks a tool
+by reading them, so a description that oversells is a defect in the same way a
+wrong return value is.
 """)
 
 # ==========================================================================
@@ -1274,18 +1435,24 @@ with od.step("prove one field is in the lot, without revealing the others") as s
 # ==========================================================================
 
 md("""
-## 14. What this run actually demonstrated
+## 16. What this run actually demonstrated
 
 Generated from the steps above rather than written by hand. A hand-written
 summary of a notebook is a claim about some previous run; this one cannot
 disagree with the cells it follows.
 
-Read the skipped lines as the honest to-do list. Each is something this run did
-not show, and most of them close by bringing the stack up:
+Read the unticked lines as the honest to-do list. There are two kinds and the
+difference matters:
 
-```
-cd dpi-demo && make openscience
-```
+- **SKIPPED** — the call was never made, because something upstream was not
+  running. Bring the stack up.
+- **EMPTY** — the call was made, and the node answered that it holds nothing
+  for that field. Nothing is broken; the layer needs ingesting.
+
+The second word exists because until 2026-09-07 there was only the first four,
+and a node answering `404 no_data` was recorded **LIVE** — so this ledger, the
+one part of the notebook written to be incapable of overstating what ran,
+reported that vegetation and weather had been demonstrated when neither had.
 """)
 
 code("""
@@ -1297,14 +1464,34 @@ md("""
 
 ### Where this goes next
 
-The gaps this run leaves are provisioning, not design. NDVI and GFS read from
-the existing TerraPipe share and need it mounted; four more deforestation
-rasters are being mirrored; the stack sections need Docker.
+**What is already load-bearing.** The screen refuses to call an incompletely
+measured field clean. Absence never becomes zero. Consent changes the
+resolution of an answer rather than gating it entirely. Every number carries
+the provenance that lets somebody else check it. And the two sections that
+matter most are the ones where the data disagrees with itself — the national
+map against the global product, and the same field across three vintages —
+because a system that cannot show you a disagreement will eventually show you
+a confident falsehood instead.
 
-What is already load-bearing: the screen refuses to call an incompletely
-measured field clean, absence never becomes zero, consent changes the
-resolution of an answer rather than gating it entirely, and every number
-carries the provenance that lets somebody else check it.
+**What is not here.** NDVI and GFS are declared, mirrored and unreadable for
+every field in this notebook, which is why they carry EMPTY above rather than a
+chart; that is a provisioning gap, recorded as AG-013. Four more deforestation
+rasters are being mirrored. Neither of the two older ICF vintages declares its
+legend, so the node answers them with bare numbers and section 7 resolves those
+by hand — the codebook belongs in the layer definition, recorded as AG-001.
+
+**And one thing that is design, not provisioning.** Pest and disease was asked
+for and is absent, because there is no open field-level pest surveillance layer
+for Honduras to mirror. GBIF holds two records of coffee leaf rust and four of
+coffee berry borer for the whole country — verified against the live API, with
+a negative control to confirm the species filter fires. That is a real gap in
+the open-science plane, not an oversight in this notebook, and inventing a risk
+score to fill it would have been worse than leaving it named.
+
+**Where to go next.** Field identity, de-duplication and the disclosure tiers
+are taken apart on real parcel data in `ar2_field_identity_demo.ipynb`. Lots,
+trace-back, trace-forward and the authority to ask are in
+`traceability_demo.ipynb`.
 
 **Licences.** terrapipe-os is MPL-2.0, Pancake is EUPL-1.2, AR2 is EUPL-1.2.
 The data keeps its own: JRC TMF is CC-BY-4.0, GFS is a US Government work in
