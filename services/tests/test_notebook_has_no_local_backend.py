@@ -18,6 +18,7 @@ import collections
 import textwrap
 import os
 import re
+from urllib.parse import urlparse
 import json
 import subprocess
 import sys
@@ -443,8 +444,6 @@ def test_every_layer_is_either_drawn_or_named_as_not_drawn() -> None:
     is smaller than it is, which is the same silent-absence problem the readings
     are careful about.
     """
-    import html as html_module  # noqa: PLC0415
-    import re  # noqa: PLC0415
 
     od = _module()
     pytest.importorskip("folium")
@@ -457,9 +456,7 @@ def test_every_layer_is_either_drawn_or_named_as_not_drawn() -> None:
         {"layer_id": "undeclared", "coverage": {}},
     ]
 
-    drawn = html_module.unescape(od.coverage_map(od.demo_fields(), layers)._repr_html_())
-    legend = re.findall(r'vertical-align:middle"></span>([^<]{2,120})</div>', drawn)
-    accounted = " ".join(legend)
+    accounted = _legend_of(od.coverage_map(od.demo_fields(), layers))
 
     assert "2 layers sharing one extent" in accounted, "identical extents should be drawn once"
     assert "regional" in accounted
@@ -488,8 +485,6 @@ def test_the_cover_map_separates_the_field_cell_from_its_refinement() -> None:
     was placed rather than exactly on it. Colouring them alike would lose the
     argument the map is there to make.
     """
-    import html as html_module  # noqa: PLC0415
-    import re  # noqa: PLC0415
 
     od = _module()
     pytest.importorskip("folium")
@@ -501,8 +496,7 @@ def test_the_cover_map_separates_the_field_cell_from_its_refinement() -> None:
     core = s2sphere.CellId.from_token(token)
     skirt = [c.to_token() for c in list(core.children())[:2]]
 
-    drawn = html_module.unescape(od.cover_map(field, [token, *skirt])._repr_html_())
-    legend = " ".join(re.findall(r'vertical-align:middle"></span>([^<]{2,120})</div>', drawn))
+    legend = _legend_of(od.cover_map(field, [token, *skirt]))
 
     assert "the field's own cell" in legend
     assert "boundary refinement" in legend
@@ -760,3 +754,294 @@ def test_the_readme_points_at_the_same_requirements_the_notebook_installs() -> N
     assert "pip install folium" not in text, (
         "naming a single package here duplicates requirements.txt and will drift"
     )
+
+
+def _legend_of(canvas) -> str:
+    """The legend's labels, read off the stable class rather than its styling."""
+    import html as html_module
+
+    drawn = html_module.unescape(canvas._repr_html_())
+    return " ".join(re.findall(r'class="legend-label">([^<]*)</span>', drawn))
+
+
+def _rendered(canvas) -> str:
+    import html as html_module
+
+    return html_module.unescape(canvas._repr_html_())
+
+
+def _every_map():
+    """One of each map, with the arguments the notebook passes."""
+    import s2sphere
+
+    od = _module()
+    fields = od.demo_fields()
+    token = fields[0]["properties"]["s2_token"]
+    skirt = [c.to_token() for c in s2sphere.CellId.from_token(token).children()][:4]
+    verdicts = ["no_deforestation_detected", "deforestation_detected", "inconclusive",
+                "no_deforestation_detected"]
+    screens = {
+        field["properties"]["name"]: {
+            "verdict": verdict, "scope": "field", "cutoff_year": 2020,
+            "deforested_fraction": 0.0, "coverage_fraction": 0.9,
+        }
+        for field, verdict in zip(fields, verdicts, strict=False)
+    }
+    layers = [
+        {"layer_id": "icf_a", "coverage": {"bbox": [-89.4, 12.9, -83.1, 16.6]}},
+        {"layer_id": "icf_b", "coverage": {"bbox": [-89.4, 12.9, -83.1, 16.6]}},
+        {"layer_id": "palm", "coverage": {"bbox": [-88.5, 15.0, -84.0, 16.2]}},
+        {"layer_id": "gfs", "coverage": {"bbox": [-180, -90, 180, 90]}},
+    ]
+    return {
+        "field_map": od.field_map(fields),
+        "field_map with verdicts": od.field_map(fields, screens=screens),
+        "consent_map": od.consent_map(fields[0]),
+        "cover_map": od.cover_map(fields[0], [token, *skirt]),
+        "coverage_map": od.coverage_map(fields, layers),
+    }
+
+
+def test_every_basemap_is_black_and_white() -> None:
+    """Coloured imagery hid the overlays; grey is the point, not a preference.
+
+    Scoped to Leaflet's tile pane, so the imagery layer is desaturated too and
+    the drawn shapes stay the only coloured thing on any base layer.
+    """
+    pytest.importorskip("folium")
+
+    for name, canvas in _every_map().items():
+        drawn = _rendered(canvas)
+        assert "grayscale(100%)" in drawn, f"{name} does not desaturate its tiles"
+        assert ".leaflet-tile-pane" in drawn, (
+            f"{name} filters more than the tiles, which would grey out the overlays too"
+        )
+
+
+def test_no_basemap_needs_an_api_key() -> None:
+    """folium's cartodbpositron warns that CartoDB now requires a key.
+
+    A basemap that silently stops loading for a later reader is worse than one
+    that was never offered, and this is not the kind of thing that fails at the
+    time you change it.
+    """
+    pytest.importorskip("folium")
+
+    # An allow-list of hosts, not a deny-list of one vendor. Spelling CartoDB's
+    # name was not enough: folium renders that basemap from basemaps.cartocdn.com,
+    # so a check looking for "cartodb" passed while the map used it.
+    keyless = {"server.arcgisonline.com"}
+
+    for name, canvas in _every_map().items():
+        urls = re.findall(r'L\.tileLayer\(\s*"([^"]+)"', _rendered(canvas))
+        assert urls, f"{name} renders no tile layer at all"
+        for url in urls:
+            host = urlparse(url.replace("{s}.", "")).netloc
+            assert host in keyless, (
+                f"{name} loads tiles from {host}, which is not a host we have "
+                f"confirmed serves without an API key"
+            )
+
+
+def test_every_map_fits_itself_to_what_it_draws() -> None:
+    """A fixed zoom framed one map and cut the rest off at the edge of the view."""
+    pytest.importorskip("folium")
+
+    for name, canvas in _every_map().items():
+        assert "fitBounds" in _rendered(canvas), f"{name} uses a fixed zoom"
+
+
+def test_the_fitted_box_contains_every_shape_with_room_to_spare() -> None:
+    """Fitting to the shapes is only useful if nothing lands outside the box."""
+    od = _module()
+    fields = od.demo_fields()
+    rings = [od._ring_of(field) for field in fields]
+
+    (south, west), (north, east) = od._bounds(rings)
+
+    for ring in rings:
+        for lat, lon in ring:
+            assert south < lat < north, "a field's latitude is outside the fitted box"
+            assert west < lon < east, "a field's longitude is outside the fitted box"
+
+
+def test_a_single_small_field_still_gets_a_margin() -> None:
+    """Fitted exactly, three hectares fills the frame and Leaflet outruns the tiles."""
+    od = _module()
+    field = od.demo_fields()[0]
+    ring = od._ring_of(field)
+
+    (south, west), (north, east) = od._bounds([ring])
+
+    lats = [p[0] for p in ring]
+    assert north - max(lats) >= od.MIN_MARGIN * 0.99, "no margin above a small field"
+    assert min(lats) - south >= od.MIN_MARGIN * 0.99, "no margin below a small field"
+
+
+def test_every_overlay_is_a_layer_that_can_be_switched_off() -> None:
+    """The reader's question is 'what changes if I turn this off', so let them."""
+    pytest.importorskip("folium")
+
+    for name, canvas in _every_map().items():
+        drawn = _rendered(canvas)
+        assert "L.control.layers" in drawn, f"{name} has no layer control"
+        assert drawn.count("L.featureGroup") >= 2, (
+            f"{name} draws everything into one layer, so nothing can be switched off"
+        )
+
+
+def test_a_masked_answer_is_drawn_beside_every_disclosed_one() -> None:
+    """L0 around L1, so consent is visible rather than described.
+
+    AR2 answers a GeoID without a grant at L0 with an S2 level-10 cell, and with
+    a grant at L1 with the boundary. Both confirmed against the deployment on
+    2026-09-06.
+    """
+    pytest.importorskip("folium")
+    od = _module()
+
+    field = od.demo_fields()[0]
+    ring, _ = od.masked_ring(field)
+    # A corner of the masked cell, to six places. Looking for the string "L0"
+    # instead passed while the cell was not drawn at all, because the legend
+    # still carried the word.
+    corner = f"{ring[0][0]:.6f}"[:8]
+
+    maps = _every_map()
+    for name in ("field_map", "consent_map", "cover_map"):
+        drawn = _rendered(maps[name])
+        assert corner in drawn, f"{name} does not draw the masked cell, only mentions it"
+        assert f"{od._ring_of(field)[0][0]:.6f}"[:8] in drawn, (
+            f"{name} does not draw the disclosed boundary"
+        )
+
+
+def test_the_masked_cell_is_dotted_and_the_disclosed_one_is_not() -> None:
+    """Told apart by shape as well as hue, for the same reason a legend has both."""
+    pytest.importorskip("folium")
+    od = _module()
+
+    _, dashes, _ = od.DISCLOSURE["L0"]
+    assert dashes, "the masked tier has no dash pattern"
+    assert od.DISCLOSURE["L1"][1] is None, "the disclosed tier should be solid"
+
+    drawn = _rendered(_every_map()["consent_map"])
+    assert f'"dashArray": "{dashes}"' in drawn or f"'dashArray': '{dashes}'" in drawn, (
+        "the masked cell is not drawn dotted"
+    )
+
+
+def test_the_masked_cell_encloses_the_field_it_stands_in_for() -> None:
+    """Otherwise it is a rectangle somewhere near the field rather than about it."""
+    od = _module()
+    field = od.demo_fields()[0]
+
+    ring, token = od.masked_ring(field)
+
+    lats = [p[0] for p in ring]
+    lons = [p[1] for p in ring]
+    for lat, lon in od._ring_of(field):
+        assert min(lats) <= lat <= max(lats), "the field falls outside its own masked cell"
+        assert min(lons) <= lon <= max(lons), "the field falls outside its own masked cell"
+
+    import s2sphere
+
+    assert s2sphere.CellId.from_token(token).level() == od.MASKED_LEVEL
+
+
+def test_the_masked_cell_is_the_level_ar2_actually_answers_with() -> None:
+    """Pinned to the deployment, not to what would be convenient to draw.
+
+    Asked on 2026-09-06: fetch-field without a grant returns MaskingLevel L0 and
+    a level-10 token. If AR2 changes tier, this constant is wrong and the maps
+    quietly illustrate a disclosure that is not being made.
+    """
+    od = _module()
+
+    assert od.MASKED_LEVEL == 10
+    assert f"level-{od.MASKED_LEVEL}" in od.DISCLOSURE["L0"][2], (
+        "the legend wording and the drawn level can disagree"
+    )
+
+
+def test_every_map_carries_a_legend_with_a_title() -> None:
+    """A colour that means something needs somewhere saying what."""
+    pytest.importorskip("folium")
+
+    for name, canvas in _every_map().items():
+        drawn = _rendered(canvas)
+        assert "font-weight:600" in drawn, f"{name} has an untitled legend"
+        assert "position:fixed" in drawn, f"{name} has no legend at all"
+
+
+def test_the_legend_shows_a_dotted_swatch_for_a_dotted_shape() -> None:
+    """A solid block in the legend for a dotted outline is a legend that misleads."""
+    pytest.importorskip("folium")
+    od = _module()
+
+    drawn = _rendered(_every_map()["consent_map"])
+
+    assert "border-top:3px dashed" in drawn, "the legend has no dashed swatch"
+    assert od.DISCLOSURE["L0"][0] in drawn
+
+
+def test_drawn_shapes_use_one_colour_unless_the_colour_is_a_reading() -> None:
+    """Hue is reserved for meaning: disclosure tier and verdict, nothing else.
+
+    Before this the maps used five unrelated colours for five kinds of shape,
+    which gave the reader a key to memorise and no information in return.
+    """
+    pytest.importorskip("folium")
+    od = _module()
+
+    allowed = {
+        od.ACCENT.lower(), od.ACCENT_TINT.lower(), od.OUTLINE.lower(),
+        od.DISCLOSURE["L0"][0].lower(), "#bdc3c7",
+        *(colour.lower() for colour in od.VERDICT_COLOUR.values()),
+    }
+
+    for name, canvas in _every_map().items():
+        drawn = _rendered(canvas)
+        used = {
+            match.lower()
+            for match in re.findall(r'"(?:color|fillColor)": "(#[0-9a-fA-F]{6})"', drawn)
+        }
+        assert used <= allowed, f"{name} draws in unexplained colours: {sorted(used - allowed)}"
+
+
+def test_fields_stay_visible_when_the_whole_country_is_in_view() -> None:
+    """Three hectares at national zoom is under one pixel.
+
+    The verdict map's job is to show all four verdicts at once, and it could not:
+    the polygons were there and invisible until you zoomed into each field, so
+    the map answered a question nobody could ask of it. A circle marker is sized
+    in pixels rather than degrees, so it survives every zoom.
+    """
+    pytest.importorskip("folium")
+    od = _module()
+    fields = od.demo_fields()
+
+    for name in ("field_map", "field_map with verdicts", "coverage_map"):
+        drawn = _rendered(_every_map()[name])
+        assert drawn.count("L.circleMarker") >= len(fields), (
+            f"{name} spans the country but draws no marker for each field"
+        )
+
+
+def test_a_marker_sits_on_the_field_it_marks() -> None:
+    """A dot near the field rather than on it is worse than no dot."""
+    pytest.importorskip("folium")
+    od = _module()
+
+    field = od.demo_fields()[0]
+    ring = od._ring_of(field)
+    lats = [point[0] for point in ring]
+    lons = [point[1] for point in ring]
+
+    drawn = _rendered(od.field_map([field]))
+    centres = re.findall(r"L\.circleMarker\(\s*\[([-\d.]+),\s*([-\d.]+)\]", drawn)
+
+    assert centres, "no marker was drawn"
+    for lat, lon in centres:
+        assert min(lats) <= float(lat) <= max(lats), "a marker is off its field"
+        assert min(lons) <= float(lon) <= max(lons), "a marker is off its field"

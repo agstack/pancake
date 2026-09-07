@@ -473,6 +473,55 @@ SATELLITE = (
 )
 SATELLITE_ATTRIBUTION = "Imagery: Esri, Maxar, Earthstar Geographics, GIS User Community"
 
+GREY = (
+    "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/"
+    "World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+)
+GREY_ATTRIBUTION = "Esri, HERE, Garmin, © OpenStreetMap contributors"
+"""Esri's Light Gray Canvas, named by URL rather than through folium's shorthand.
+
+folium's built-in ``cartodbpositron`` would have been the obvious grey basemap,
+and it emits a warning that CartoDB now requires an API key -- a demo whose
+basemap silently stops loading for the next reader is worse than one that never
+offered it. This is keyless, and it is the same provider as the satellite layer
+already here, so it adds no new dependency to be down.
+"""
+
+ACCENT = "#d81b60"
+"""One colour for every drawn shape, so the basemap carries none of the meaning.
+
+Satellite imagery of the Honduran coffee belt is green, brown and mottled, and a
+thin green polygon on it is invisible -- which is what these maps looked like
+until 2026-09-06. The fix is on both sides: the tiles are desaturated to grey,
+and everything drawn on top is this one saturated colour. Where two shapes need
+telling apart they differ in weight, dash and fill rather than in hue, because a
+second hue is a second thing for the reader to decode.
+
+The exception is a colour that carries a reading rather than a distinction --
+the verdicts below. Those are the map's content, the same way a raster's own
+palette is.
+"""
+
+ACCENT_TINT = "#f48fb1"
+"""The same hue, lighter, for the secondary half of a pair on one map."""
+
+OUTLINE = "#1a1a1a"
+"""For an outline that must read against a coloured fill.
+
+White worked on satellite imagery and disappears on a light grey basemap, which
+is the kind of thing that only shows up when you look at the rendered map.
+"""
+
+TILE_GREYSCALE = "<style>.leaflet-tile-pane{filter:grayscale(100%) contrast(0.85) opacity(0.9);}</style>"
+"""Desaturate the tiles and nothing else.
+
+Leaflet keeps basemap tiles in ``.leaflet-tile-pane`` and drawn vectors in the
+overlay pane above it, so a filter scoped to that one pane turns every basemap
+black and white -- including the satellite imagery -- while leaving the polygons
+their full colour. Doing it in CSS rather than by choosing grey tiles means the
+imagery stays available as a base layer instead of being dropped.
+"""
+
 
 def have_folium() -> bool:
     return importlib.util.find_spec("folium") is not None
@@ -521,21 +570,155 @@ def _ring_of(feature: dict[str, Any]) -> list[list[float]]:
     return [[lat, lon] for lon, lat in feature["geometry"]["coordinates"][0]]
 
 
-def _basemap(centre: list[float], zoom: int):
+MASKED_LEVEL = 10
+"""The S2 level AR2 masks a GeoID to when no grant is presented.
+
+Not a guess: asked of the deployment on 2026-09-06. ``GET /fetch-field/{id}``
+without a grant answers ``MaskingLevel: L0`` and a level-10 cell token; the same
+call with a field grant answers ``L1`` and the registered boundary. The maps
+draw both, so this constant has to be what AR2 actually does rather than what
+the demo would like it to do.
+"""
+
+DISCLOSURE = {
+    "L0": (
+        "#5b6b73",
+        "6, 6",
+        f"L0 masked: the S2 level-{MASKED_LEVEL} cell AR2 answers with, no grant needed",
+    ),
+    "L1": (ACCENT, None, "L1 disclosed: the registered boundary, only with a grant"),
+}
+"""Colour, dash pattern and legend wording per disclosure tier.
+
+The one place hue is allowed to mean something other than "a shape": a reader
+should be able to tell a masked answer from a disclosed one without reading a
+tooltip. Masked is grey and dotted because it is the *less* informative answer,
+and a dotted grey outline looks approximate, which it is -- 81 km² standing in
+for three hectares.
+"""
+
+MIN_MARGIN = 0.002
+"""About 220 m, the smallest margin worth leaving around a fitted shape.
+
+Fitted exactly, a three-hectare field fills the frame corner to corner with no
+surroundings to place it against, and Leaflet zooms in past the last tile the
+imagery has.
+"""
+
+
+def _bounds(rings: list[list[list[float]]], *, pad: float = 0.12) -> list[list[float]]:
+    """The [[south, west], [north, east]] box holding every ring, plus a margin."""
+    points = [point for ring in rings for point in ring]
+    lats = [p[0] for p in points]
+    lons = [p[1] for p in points]
+    south, north, west, east = min(lats), max(lats), min(lons), max(lons)
+    down = max((north - south) * pad, MIN_MARGIN)
+    across = max((east - west) * pad, MIN_MARGIN)
+    return [[south - down, west - across], [north + down, east + across]]
+
+
+def _basemap(rings: list[list[list[float]]]):
+    """A black-and-white basemap, fitted to the shapes about to go on it.
+
+    Fitted rather than given a fixed zoom: these maps run from one three-hectare
+    field to the whole of Honduras, and a zoom level hand-picked to frame one of
+    them cut the others off at the edge of the view.
+
+    Grey rather than satellite, because the fields sit in the coffee belt and a
+    thin coloured polygon over green-and-brown imagery is invisible -- which is
+    what these maps looked like until 2026-09-06. The imagery is still here as a
+    base layer for anyone who wants to see the ground; the CSS filter desaturates
+    it too, so the drawn shapes stay the only coloured thing on any base layer.
+    """
     import folium  # noqa: PLC0415
 
-    canvas = folium.Map(location=centre, zoom_start=zoom, tiles=None, control_scale=True)
-    folium.TileLayer(SATELLITE, attr=SATELLITE_ATTRIBUTION, name="Satellite").add_to(canvas)
-    folium.TileLayer("OpenStreetMap", name="Street map").add_to(canvas)
+    canvas = folium.Map(tiles=None, control_scale=True)
+    folium.TileLayer(GREY, attr=GREY_ATTRIBUTION, name="Grey basemap").add_to(canvas)
+    folium.TileLayer(
+        SATELLITE, attr=SATELLITE_ATTRIBUTION, name="Satellite imagery", show=False
+    ).add_to(canvas)
+    canvas.get_root().header.add_child(folium.Element(TILE_GREYSCALE))
+    canvas.fit_bounds(_bounds(rings))
     return canvas
 
 
-def _centre(features: list[dict[str, Any]]) -> list[float]:
-    points = [point for feature in features for point in _ring_of(feature)]
-    return [
-        sum(p[0] for p in points) / len(points),
-        sum(p[1] for p in points) / len(points),
+def _pin(group, feature: dict[str, Any], colour: str, tooltip: str, popup=None) -> None:
+    """A fixed-size dot on the field, for the maps that show the whole country.
+
+    Three hectares at national zoom is smaller than one screen pixel, so on the
+    verdict map the four fields were invisible until you zoomed into each one --
+    which defeats a map whose job is to show all four verdicts at once. A circle
+    marker is sized in pixels rather than in degrees, so it stays legible at
+    every zoom, and the polygon underneath takes over as you zoom in.
+    """
+    import folium  # noqa: PLC0415
+
+    ring = _ring_of(feature)
+    centre = [
+        sum(point[0] for point in ring) / len(ring),
+        sum(point[1] for point in ring) / len(ring),
     ]
+    folium.CircleMarker(
+        location=centre,
+        radius=6,
+        color=colour,
+        weight=2,
+        fill=True,
+        fill_color=colour,
+        fill_opacity=0.9,
+        tooltip=tooltip,
+        popup=popup,
+    ).add_to(group)
+
+
+def _cell_area_km2(token: str) -> float:
+    """A cell's area on the sphere, so a legend can say what "L10" is worth."""
+    import s2sphere  # noqa: PLC0415
+
+    return s2sphere.Cell(s2sphere.CellId.from_token(token)).exact_area() * EARTH_RADIUS_KM**2
+
+
+EARTH_RADIUS_KM = 6371.0088
+
+
+def masked_ring(feature: dict[str, Any], level: int = MASKED_LEVEL) -> tuple[list[list[float]], str]:
+    """The cell a reader without a grant would be given instead of this field."""
+    import s2sphere  # noqa: PLC0415
+
+    cell = s2sphere.CellId.from_token(feature["properties"]["s2_token"]).parent(level)
+    return s2_cell_ring(cell.to_token()), cell.to_token()
+
+
+def _add_masked(canvas, features: list[dict[str, Any]], *, show: bool = True) -> list[list[float]]:
+    """Draw the L0 cell around every field, as its own layer, and return the rings.
+
+    Every map that shows a boundary also shows what is released when nobody has
+    consented to that boundary being seen. Keeping it a separate layer means a
+    reader can switch between the two answers rather than take the caption's
+    word for the difference.
+    """
+    import folium  # noqa: PLC0415
+
+    colour, dashes, _ = DISCLOSURE["L0"]
+    group = folium.FeatureGroup(name=f"L0 masked cells (S2 level {MASKED_LEVEL})", show=show)
+    rings = []
+    for feature in features:
+        ring, token = masked_ring(feature)
+        rings.append(ring)
+        folium.Polygon(
+            locations=ring,
+            color=colour,
+            weight=2,
+            dash_array=dashes,
+            fill=True,
+            fill_opacity=0.05,
+            tooltip=(
+                f"L0: {token}, S2 level {MASKED_LEVEL}, {_cell_area_km2(token):,.0f} km²"
+                f" &mdash; what AR2 answers for {feature['properties']['title']} without a grant"
+            ),
+        ).add_to(group)
+    group.add_to(canvas)
+    return rings
 
 
 def field_map(features: list[dict[str, Any]], *, screens: dict[str, dict[str, Any]] | None = None):
@@ -547,12 +730,22 @@ def field_map(features: list[dict[str, Any]], *, screens: dict[str, dict[str, An
     """
     import folium  # noqa: PLC0415
 
-    canvas = _basemap(_centre(features), 8)
+    rings = [_ring_of(feature) for feature in features]
+    canvas = _basemap(rings)
+    masked = _add_masked(canvas, features, show=not screens)
+    canvas.fit_bounds(_bounds(rings + masked))
+
+    # One layer per verdict, so a reader can isolate the cleared fields; one
+    # layer for everything when there are no verdicts yet.
+    groups: dict[str, Any] = {}
     for feature in features:
         name = feature["properties"]["name"]
         screen = (screens or {}).get(name)
         verdict = (screen or {}).get("verdict")
-        colour = VERDICT_COLOUR.get(verdict, "#2874a6")
+        colour = VERDICT_COLOUR.get(verdict, ACCENT)
+        label = f"L1 boundaries: {verdict}" if verdict else "L1 registered boundaries"
+        if label not in groups:
+            groups[label] = folium.FeatureGroup(name=label, show=True)
 
         lines = [
             f"<b>{feature['properties']['title']}</b>",
@@ -576,12 +769,30 @@ def field_map(features: list[dict[str, Any]], *, screens: dict[str, dict[str, An
             fill_opacity=0.35,
             popup=folium.Popup("<br>".join(lines), max_width=320),
             tooltip=feature["properties"]["title"],
-        ).add_to(canvas)
+        ).add_to(groups[label])
+        _pin(
+            groups[label],
+            feature,
+            colour,
+            feature["properties"]["title"],
+            popup=folium.Popup("<br>".join(lines), max_width=320),
+        )
 
+    for group in groups.values():
+        group.add_to(canvas)
+
+    entries = [(DISCLOSURE["L0"][2], DISCLOSURE["L0"][0], "dashed")]
     if screens:
-        _legend(canvas, {v: c for v, c in VERDICT_COLOUR.items() if v in
-                         {s.get("verdict") for s in screens.values()}})
-    folium.LayerControl(collapsed=True).add_to(canvas)
+        seen = {s.get("verdict") for s in screens.values()}
+        entries += [
+            (f"L1 disclosed: {verdict}", colour, "solid")
+            for verdict, colour in VERDICT_COLOUR.items()
+            if verdict in seen
+        ]
+    else:
+        entries.append((DISCLOSURE["L1"][2], ACCENT, "solid"))
+    _legend(canvas, entries, title="Verdict" if screens else "Disclosure tier")
+    folium.LayerControl(collapsed=False).add_to(canvas)
     return canvas
 
 
@@ -636,34 +847,51 @@ def consent_map(
         neighbourhood_level = coarse.level()
     else:
         coarse = s2sphere.CellId.from_token(token).parent(neighbourhood_level)
-    coarse_ring = s2_cell_ring(coarse.to_token())
+    coarse_token = coarse.to_token()
+    coarse_ring = s2_cell_ring(coarse_token)
+    field_ring = _ring_of(feature)
 
-    canvas = _basemap(_centre([feature]), 11)
+    canvas = _basemap([coarse_ring, field_ring])
+
+    masked_colour, dashes, masked_label = DISCLOSURE["L0"]
+    masked = folium.FeatureGroup(name=f"L0 masked cell (S2 level {neighbourhood_level})", show=True)
     folium.Polygon(
         locations=coarse_ring,
-        color="#b7791f",
+        color=masked_colour,
         weight=2,
-        dash_array="6",
+        dash_array=dashes,
         fill=True,
-        fill_opacity=0.12,
-        tooltip=f"neighbourhood: S2 level {neighbourhood_level} cell (no grant needed)",
-    ).add_to(canvas)
+        fill_opacity=0.08,
+        tooltip=(
+            f"L0: {coarse_token}, S2 level {neighbourhood_level}, "
+            f"{_cell_area_km2(coarse_token):,.0f} km² &mdash; answered without a grant"
+        ),
+    ).add_to(masked)
+    masked.add_to(canvas)
+
+    disclosed = folium.FeatureGroup(name="L1 registered boundary", show=True)
     folium.Polygon(
-        locations=_ring_of(feature),
-        color="#c0392b",
+        locations=field_ring,
+        color=ACCENT,
         weight=2,
         fill=True,
         fill_opacity=0.5,
-        tooltip=f"the field: {feature['properties']['area_ha']:.2f} ha (needs a grant)",
-    ).add_to(canvas)
+        tooltip=(
+            f"L1: {feature['properties']['area_ha']:.2f} ha &mdash; answered only with a grant"
+        ),
+    ).add_to(disclosed)
+    disclosed.add_to(canvas)
+
     _legend(
         canvas,
-        {
-            f"neighbourhood (L{neighbourhood_level}), answered without a grant": "#b7791f",
-            "the field, answered only with a grant": "#c0392b",
-        },
+        [
+            (masked_label.replace(f"level-{MASKED_LEVEL}", f"level-{neighbourhood_level}"),
+             masked_colour, "dashed"),
+            (DISCLOSURE["L1"][2], ACCENT, "solid"),
+        ],
+        title="Disclosure tier",
     )
-    folium.LayerControl(collapsed=True).add_to(canvas)
+    folium.LayerControl(collapsed=False).add_to(canvas)
     return canvas
 
 
@@ -710,48 +938,66 @@ def cover_map(feature: dict[str, Any], cover: list[str]):
     import folium  # noqa: PLC0415
     import s2sphere  # noqa: PLC0415
 
-    canvas = _basemap(_centre([feature]), 16)
-
     by_level: dict[int, list[str]] = {}
     for cell in cover:
         by_level.setdefault(s2sphere.CellId.from_token(cell).level(), []).append(cell)
 
+    field_ring = _ring_of(feature)
+    cover_rings = [s2_cell_ring(cell) for cell in cover]
+    canvas = _basemap([field_ring, *cover_rings])
+
     core = min(by_level) if by_level else None
+    # One hue, two weights: the field's own cell and the skirt of refinement
+    # around its edge are the same kind of thing at two scales, not two kinds.
+    entries = []
     for level, cells in sorted(by_level.items()):
-        # The coarse cell is the field's own; everything finer is refinement.
-        colour = "#2874a6" if level == core else "#e67e22"
+        is_core = level == core
+        colour = ACCENT if is_core else ACCENT_TINT
+        what = "the field's own cell" if is_core else "boundary refinement"
+        label = f"S2 level {level}: {len(cells)} cell{'s' if len(cells) != 1 else ''} ({what})"
+        group = folium.FeatureGroup(name=label, show=True)
         for cell in cells:
             folium.Polygon(
                 locations=s2_cell_ring(cell),
                 color=colour,
                 weight=1,
                 fill=True,
-                fill_opacity=0.25 if level == core else 0.55,
+                fill_opacity=0.2 if is_core else 0.6,
                 tooltip=f"S2 level {level}: {cell}",
-            ).add_to(canvas)
+            ).add_to(group)
+        group.add_to(canvas)
+        entries.append((label, colour, "solid"))
 
+    boundary = folium.FeatureGroup(name="L1 registered boundary", show=True)
     folium.Polygon(
-        locations=_ring_of(feature),
-        color="#ffffff",
+        locations=field_ring,
+        color=OUTLINE,
         weight=2,
         fill=False,
         tooltip="the registered boundary",
-    ).add_to(canvas)
+    ).add_to(boundary)
+    boundary.add_to(canvas)
+    entries.append(("L1 disclosed: the registered boundary", OUTLINE, "solid"))
 
-    _legend(
-        canvas,
-        {
-            **{
-                f"L{level}: {len(cells)} cell{'s' if len(cells) != 1 else ''}"
-                + (" (the field's own cell)" if level == core else " (boundary refinement)"): (
-                    "#2874a6" if level == core else "#e67e22"
-                )
-                for level, cells in sorted(by_level.items())
-            },
-            "the registered boundary": "#ffffff",
-        },
-    )
-    folium.LayerControl(collapsed=True).add_to(canvas)
+    # Off by default and deliberately not fitted to: the masked cell is some
+    # 81 km² against a 300 m field, so framing it would shrink everything this
+    # map exists to show into a dot. Available for anyone who wants the scale.
+    masked_colour, dashes, masked_label = DISCLOSURE["L0"]
+    ring, token = masked_ring(feature)
+    away = folium.FeatureGroup(name="L0 masked cell (zoom out to see)", show=False)
+    folium.Polygon(
+        locations=ring,
+        color=masked_colour,
+        weight=2,
+        dash_array=dashes,
+        fill=False,
+        tooltip=f"L0: {token}, {_cell_area_km2(token):,.0f} km²",
+    ).add_to(away)
+    away.add_to(canvas)
+    entries.append((masked_label + " (off by default here)", masked_colour, "dashed"))
+
+    _legend(canvas, entries, title="AR2's S2 cover")
+    folium.LayerControl(collapsed=False).add_to(canvas)
     return canvas
 
 
@@ -771,9 +1017,6 @@ def coverage_map(features: list[dict[str, Any]], layers: list[dict[str, Any]]):
     """
     import folium  # noqa: PLC0415
 
-    canvas = _basemap(_centre(features), 7)
-    palette = ["#8e44ad", "#16a085", "#d35400", "#2c3e50", "#7f8c8d"]
-
     # Grouped by extent, not by layer: the four ICF layers share one national
     # bbox, and drawing four identical rectangles stacks them into a single
     # muddy outline that claims to be four things.
@@ -792,65 +1035,98 @@ def coverage_map(features: list[dict[str, Any]], layers: list[dict[str, Any]]):
             continue
         shared.setdefault(tuple(bbox), []).append(layer_id)
 
-    drawn: dict[str, str] = {}
+    field_rings = [_ring_of(feature) for feature in features]
+    extent_rings = [
+        [[s, w], [n, w], [n, e], [s, e], [s, w]]
+        for (w, s, e, n) in shared
+    ]
+    canvas = _basemap(field_rings + extent_rings)
+
+    # Each extent is a layer of its own: switching the national one off is how a
+    # reader sees that the palm band and the coffee belt do not overlap.
+    entries = []
     for index, (bbox, ids) in enumerate(shared.items()):
         west, south, east, north = bbox
-        colour = palette[index % len(palette)]
+        colour = ACCENT if index == 0 else ACCENT_TINT
         label = ids[0] if len(ids) == 1 else f"{len(ids)} layers sharing one extent"
-        drawn[label] = colour
+        group = folium.FeatureGroup(name=f"extent: {label}", show=True)
         folium.Rectangle(
             bounds=[[south, west], [north, east]],
             color=colour,
             weight=2,
+            dash_array="4, 6",
             fill=True,
-            fill_opacity=0.06,
+            fill_opacity=0.05,
             tooltip="declared extent of: " + ", ".join(ids),
-        ).add_to(canvas)
+        ).add_to(group)
+        group.add_to(canvas)
+        entries.append((f"{label}: declared extent", colour, "dashed"))
 
+    fields = folium.FeatureGroup(name="L1 registered boundaries", show=True)
     for feature in features:
         folium.Polygon(
             locations=_ring_of(feature),
-            color="#c0392b",
+            color=OUTLINE,
             weight=2,
             fill=True,
             fill_opacity=0.9,
             tooltip=feature["properties"]["title"],
-        ).add_to(canvas)
+        ).add_to(fields)
+        _pin(fields, feature, OUTLINE, feature["properties"]["title"])
+    fields.add_to(canvas)
+    entries.append(("the four demo fields", OUTLINE, "solid"))
 
     # Named rather than dropped. A layer missing from a coverage map should not
     # be missing silently, which is the same argument the readings make.
-    not_drawn = {}
     if everywhere:
-        not_drawn[f"{len(everywhere)} wider than this map, not drawn"] = "#bdc3c7"
+        entries.append((f"{len(everywhere)} wider than this map, not drawn", "#bdc3c7", "solid"))
     if undeclared:
-        not_drawn[f"{len(undeclared)} declaring no extent, not drawn"] = "#bdc3c7"
+        entries.append((f"{len(undeclared)} declaring no extent, not drawn", "#bdc3c7", "solid"))
 
-    _legend(
-        canvas,
-        {
-            **{f"{label}: declared extent": colour for label, colour in drawn.items()},
-            "the four demo fields": "#c0392b",
-            **not_drawn,
-        },
-    )
-    folium.LayerControl(collapsed=True).add_to(canvas)
+    _legend(canvas, entries, title="Layer coverage")
+    folium.LayerControl(collapsed=False).add_to(canvas)
     return canvas
 
 
-def _legend(canvas, entries: dict[str, str]) -> None:
-    """A plain HTML legend. folium has no first-class one."""
+def _legend(canvas, entries: list[tuple[str, str, str]], *, title: str | None = None) -> None:
+    """A plain HTML legend. folium has no first-class one.
+
+    Each entry is (label, colour, style), where style is ``solid`` or
+    ``dashed``. The style matters as much as the colour: a masked answer is
+    drawn dotted on the map, and a legend that showed it as a solid block would
+    not let a reader match the two.
+    """
     import folium  # noqa: PLC0415
 
-    rows = "".join(
-        f'<div style="margin:2px 0"><span style="display:inline-block;width:12px;height:12px;'
-        f'background:{colour};margin-right:6px;vertical-align:middle"></span>{label}</div>'
-        for label, colour in entries.items()
+    rows = []
+    for label, colour, style in entries:
+        if style == "dashed":
+            swatch = (
+                f"display:inline-block;width:14px;height:0;margin:0 6px 3px 0;"
+                f"vertical-align:middle;border-top:3px dashed {colour}"
+            )
+        else:
+            swatch = (
+                f"display:inline-block;width:14px;height:12px;margin-right:6px;"
+                f"vertical-align:middle;background:{colour};opacity:0.85"
+            )
+        # The class is what tests read. Scraping the inline style instead meant
+        # that restyling the swatch broke two checks that had no opinion about
+        # styling, which is a check that fires on the wrong thing.
+        rows.append(
+            f'<div class="legend-row" style="margin:3px 0">'
+            f'<span class="legend-swatch" data-style="{style}" style="{swatch}"></span>'
+            f'<span class="legend-label">{label}</span></div>'
+        )
+
+    heading = (
+        f'<div style="font-weight:600;margin-bottom:4px">{title}</div>' if title else ""
     )
     canvas.get_root().html.add_child(
         folium.Element(
             f'<div style="position:fixed;bottom:24px;left:24px;z-index:9999;background:white;'
-            f'padding:8px 10px;border:1px solid #999;border-radius:4px;font:12px sans-serif">'
-            f"{rows}</div>"
+            f'padding:8px 10px;border:1px solid #999;border-radius:4px;font:12px sans-serif;'
+            f'max-width:340px;line-height:1.35">{heading}{"".join(rows)}</div>'
         )
     )
 
