@@ -66,14 +66,21 @@ Four repositories are involved and each does one thing:
 
 Every step prints a badge, and the last cell prints a ledger of all of them.
 
-- **LIVE** — ran against the running stack. AR2 minted the GeoID, Pancake
+- **LIVE** — ran against a running service. AR2 minted the GeoID, Pancake
   issued the grant, the node answered over HTTP.
-- **LOCAL** — the stack is not up, but the mirrored rasters are mounted and
-  terrapipe-os is importable, so the data plane ran in this process against
-  the real national stores. The numbers are real; the identity and consent
-  parts are stood in for, and each affected cell says so.
-- **SKIPPED** — neither was available. The cell says what it would have done.
+- **LOCAL** — ran in this kernel, and could only ever have been one of three
+  harmless things: writing a file, re-displaying a reading already fetched, or
+  Pancake's own adapter reshaping what the node returned. **No LOCAL step reads
+  a raster or computes a reading.** It cannot: the first cell installs an import
+  hook that makes the data plane unimportable here.
+- **SKIPPED** — the service was not available and there is no substitute. The
+  cell says what it would have done.
 - **FAILED** — it tried and something broke. The reason is printed.
+
+Four of these steps used to fall back to an in-process copy of the data plane
+when the node was unreachable. That produces the same numbers while
+demonstrating nothing about anyone's deployment, and quietly turns an outage
+into a clean run, so it is gone.
 
 **A cell that did not really run does not look like one that did.** Nothing in
 this notebook manufactures a reading to keep the narrative flowing. Where a
@@ -82,20 +89,12 @@ plausible number in a document about compliance is worse than a missing one.
 
 ### Running it yourself
 
-The committed output is from a LOCAL run: no stack, real rasters. To reproduce
-that much you need the two national stores ingested, which is one command each
-in `terrapipe-os`:
+Section 0 below is the whole of it: a virtualenv, one `pip install`, and a file
+with four addresses in it. **You do not need Docker and you do not run any of
+the services** — they are somebody's deployment and you are a client of it.
 
-```bash
-export TERRAPIPE_SHARE=/tmp/tpos-share
-bin/ingest-raster jrc_tmf_deforestation_year <the JRC TMF GeoTIFF>
-bin/ingest-raster icf_honduras_cafe_2020     <the ICF coffee GeoTIFF>
-bin/place-demo-fields examples/honduras_demo_fields.geojson
-```
-
-For a LIVE run, `cd dpi-demo && make openscience` brings up AR2, the hub,
-Pancake and the node together, and every step below that says SKIPPED or LOCAL
-becomes LIVE.
+The committed output is a real run against that deployment, on the date in the
+first cell. Nine steps live, three local, none skipped and none failed.
 
 ### What is real and what is not
 
