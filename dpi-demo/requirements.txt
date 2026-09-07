@@ -1,0 +1,35 @@
+# Everything the open-science notebook needs, and nothing else.
+#
+#   pip install -r requirements.txt
+#
+# Deliberately not pinned to exact versions: this is a demo people are meant to
+# be able to install today, not a reproducible build. The floors are the oldest
+# releases the notebook is known to work against.
+
+# Talking to the four services. Every reading in the notebook arrives over HTTP;
+# nothing is computed in the kernel, and an import hook enforces that.
+requests>=2.31
+
+# The maps. Optional in the sense that every map cell checks for it and prints
+# what to install -- the notebook's argument survives without them -- but you
+# want them.
+folium>=0.16
+
+# S2 geometry, for drawing cells. Used only to turn a cell token into corners.
+# The identifiers themselves are minted by AR2, never here.
+s2sphere>=0.2.5
+
+# Listing the node's agent-facing tools over MCP. httpx is the transport the
+# MCP client speaks over; it arrives as a dependency of mcp anyway, and is named
+# here because the support module imports it directly and a transitive
+# dependency is not a promise.
+mcp>=1.0
+httpx>=0.27
+
+# Running the notebook. Use notebook>=7 instead if you prefer the classic UI.
+jupyterlab>=4.0
+
+# Pancake's own TAP adapter, for the step that turns a screen into a BITE.
+# Installed from this checkout. If you skip it the notebook still runs and that
+# one step reports itself skipped rather than pretending.
+-e ../services

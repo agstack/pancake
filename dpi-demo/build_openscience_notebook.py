@@ -111,6 +111,97 @@ stand-ins and the findings about the land under them are not.
 """)
 
 md("""
+## 0. Setting this up
+
+Skip to section 1 if someone has already set this up for you. Otherwise this
+takes about five minutes, most of it waiting for `pip`.
+
+**You need Python 3.10 or newer.** Check with `python3 --version`. This catches
+people out on macOS, which still ships 3.9 as `python3` — the first sign is
+`pip` refusing to install `mcp` with a wall of version numbers. Install a newer
+one from [python.org](https://www.python.org/downloads/) or with
+`brew install python@3.12`, and use that name (`python3.12`) below.
+
+**You do not need Docker, and you do not need to run any of the services.**
+Everything the notebook reads comes from a deployment over HTTP. Nothing is
+computed in this kernel — there is an import hook a few cells down that makes
+that impossible rather than merely intended.
+
+### macOS and Linux
+
+```bash
+git clone https://github.com/agstack/pancake.git
+cd pancake/dpi-demo
+
+python3.12 -m venv .venv                 # or python3.10 / python3.11
+source .venv/bin/activate
+pip install -r requirements.txt
+
+cp demo.env.example demo.env             # then edit it: see below
+python -m ipykernel install --user --name openscience-demo
+jupyter lab openscience_dpi_demo.ipynb
+```
+
+### Windows
+
+The same, in PowerShell. Only the two middle lines differ:
+
+```powershell
+git clone https://github.com/agstack/pancake.git
+cd pancake\\dpi-demo
+
+py -3.12 -m venv .venv
+.venv\\Scripts\\Activate.ps1
+pip install -r requirements.txt
+
+copy demo.env.example demo.env
+python -m ipykernel install --user --name openscience-demo
+jupyter lab openscience_dpi_demo.ipynb
+```
+
+If PowerShell refuses to run the activate script, it is the execution policy
+rather than anything here:
+`Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`.
+
+### Filling in `demo.env`
+
+Four addresses and an account. The file is read when the notebook imports its
+support module, so **a change needs a kernel restart**, and a real environment
+variable overrides it if you want to point one run somewhere else.
+
+```
+HUB_URL=http://<host>:8000
+AR2_NODE_URL=http://<host>:8001
+PANCAKE_URL=http://<host>:8100
+TERRAPIPE_OS_URL=http://<node-host>:8200
+TERRAPIPE_OS_MCP_URL=http://<node-host>:8201/mcp
+
+DEMO_EMAIL=you@example.org
+DEMO_PASSWORD=pick-something
+```
+
+Ask whoever runs the deployment for the four addresses. The account is yours to
+invent: it is registered on the hub the first time you run the notebook, and
+every token is fetched fresh, so there is nothing to rotate and nothing secret
+to be handed.
+
+`demo.env` is gitignored. It names a deployment and holds a password, so it is
+not a file to commit or paste into chat.
+
+### If it does not work
+
+The next cell reports what it found rather than failing silently, and
+distinguishes the two things that go wrong. If every address reads `localhost`
+and everything is `DOWN`, the notebook was never told which deployment to use —
+`demo.env` is missing or the kernel predates it. If the addresses look right and
+services are still down, it is the deployment, and the cell says so.
+
+Selecting the wrong kernel is the other common one: the notebook needs the
+kernel from the virtualenv you just installed into, not the system Python. In
+JupyterLab that is the name in the top right.
+""")
+
+md("""
 ## 1. What is actually running
 
 Before anything claims to work, find out what is here. This cell decides which
@@ -120,6 +211,17 @@ mode the rest of the notebook is in.
 code("""
 import json, os, sys, textwrap
 from pathlib import Path
+
+if sys.version_info < (3, 10):
+    # Worth catching here rather than letting it surface as a confusing import
+    # error three cells down. Stock macOS ships 3.9, and the first sign of it is
+    # `pip install` refusing mcp with a wall of version numbers.
+    raise SystemExit(
+        f"This notebook needs Python 3.10 or newer; this kernel is "
+        f"{sys.version_info.major}.{sys.version_info.minor}.\\n"
+        "See the setup section above: the fix is to build the virtualenv with a "
+        "newer interpreter and select that kernel."
+    )
 
 def _find_support_module():
     \"\"\"Locate openscience_demo.py, which lives in pancake/dpi-demo/.

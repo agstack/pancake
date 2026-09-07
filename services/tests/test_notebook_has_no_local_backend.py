@@ -14,6 +14,10 @@ computing everything locally looks exactly like one talking to a node.
 from __future__ import annotations
 
 import ast
+import collections
+import textwrap
+import os
+import re
 import json
 import subprocess
 import sys
@@ -502,3 +506,127 @@ def test_the_cover_map_separates_the_field_cell_from_its_refinement() -> None:
     assert "the field's own cell" in legend
     assert "boundary refinement" in legend
     assert "the registered boundary" in legend
+
+
+# --------------------------------------------------------------------------
+# The setup instructions
+# --------------------------------------------------------------------------
+
+REQUIREMENTS = DEMO / "requirements.txt"
+PYTHON_FLOOR = (3, 10)
+
+
+def _required_packages() -> set[str]:
+    names = set()
+    for line in REQUIREMENTS.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or line.startswith("-e"):
+            continue
+        names.add(re.split(r"[<>=!\[]", line)[0].strip().lower())
+    return names
+
+
+def test_every_package_the_notebook_needs_is_in_requirements() -> None:
+    """A missing line here is a new reader hitting ImportError on a fresh venv.
+
+    The instructions say "pip install -r requirements.txt" and then "run it", so
+    that file is the whole contract. An import added to the support module
+    without a matching requirement breaks setup for everyone who has not been
+    carrying the package around already, and is invisible to us because our own
+    environments have it.
+    """
+    third_party = {
+        "folium": "folium",
+        "httpx": "httpx",
+        "mcp": "mcp",
+        "requests": "requests",
+        "s2sphere": "s2sphere",
+    }
+    source = (DEMO / "openscience_demo.py").read_text()
+    declared = _required_packages()
+
+    for module, package in third_party.items():
+        if f"import {module}" in source:
+            assert package in declared, (
+                f"openscience_demo.py imports {module} but requirements.txt does not "
+                f"list {package}; a fresh install would fail on it"
+            )
+
+
+def test_the_notebook_refuses_a_python_older_than_the_instructions_promise() -> None:
+    """Stock macOS is 3.9, and the failure without this is unhelpful.
+
+    Without the guard the first sign is pip refusing mcp with a wall of version
+    numbers, or -- worse, if the packages came from somewhere else -- an import
+    error several cells in that says nothing about the interpreter.
+    """
+    first = _notebook_cells()[0]
+
+    assert "sys.version_info < (3, 10)" in first, "the version guard is gone"
+    assert "3.10" in first
+
+    # Without dropping the cell's own imports the exec below rebinds sys to the
+    # real module and the guard cheerfully passes.
+    guard = "\n".join(
+        line
+        for line in first[: first.index("def _find_support_module")].splitlines()
+        if not line.startswith(("import ", "from "))
+    )
+
+    # A plain tuple compares the same way but has no .major/.minor, which the
+    # message uses; sys.version_info is a named tuple, so the stub must be too.
+    VersionInfo = collections.namedtuple("VersionInfo", "major minor micro")
+
+    class NineDotNine:
+        """Stands in for the sys a 3.9 kernel would hand the cell."""
+
+        version_info = VersionInfo(3, 9, 6)
+
+    with pytest.raises(SystemExit) as refused:
+        exec(  # noqa: S102 - executing our own generated cell is the point
+            compile(guard, "<cell>", "exec"),
+            {"sys": NineDotNine, "os": os, "json": json, "textwrap": textwrap, "Path": Path},
+        )
+
+    said = str(refused.value)
+    assert "3.10 or newer" in said
+    assert "3.9" in said, "it should name the version actually in use"
+
+
+def test_the_setup_section_names_both_platforms_and_the_python_floor() -> None:
+    """The instructions are the deliverable for a reader who has never run this."""
+    setup = "\n".join(
+        "".join(c["source"])
+        for c in json.loads(NOTEBOOK.read_text())["cells"]
+        if c["cell_type"] == "markdown" and "Setting this up" in "".join(c["source"])
+    )
+    assert setup, "the notebook has no setup section"
+
+    for needed in (
+        "3.10",
+        "requirements.txt",
+        "demo.env",
+        "venv",
+        "Windows",
+        "ipykernel",
+    ):
+        assert needed in setup, f"the setup section never mentions {needed}"
+
+    assert "source .venv/bin/activate" in setup, "no POSIX activation line"
+    assert "Activate.ps1" in setup, "no Windows activation line"
+
+
+def test_the_clone_url_is_the_real_remote() -> None:
+    """An instruction that starts with a wrong git clone wastes the whole visit."""
+    setup = NOTEBOOK.read_text()
+    remote = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        cwd=DEMO.parent,
+        capture_output=True,
+        text=True,
+    )
+    if remote.returncode != 0:
+        pytest.skip("no origin remote here")
+
+    url = remote.stdout.strip()
+    assert url in setup, f"the setup section does not clone {url}"
