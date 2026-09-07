@@ -1045,3 +1045,99 @@ def test_a_marker_sits_on_the_field_it_marks() -> None:
     for lat, lon in centres:
         assert min(lats) <= float(lat) <= max(lats), "a marker is off its field"
         assert min(lons) <= float(lon) <= max(lons), "a marker is off its field"
+
+
+def test_the_demo_fields_are_polygons_not_points() -> None:
+    """The dots on the map are a stand-in, and there has to be a thing behind them.
+
+    Each field is a four-cornered S2 level-15 cell of about eight hectares. If
+    these ever became points, the maps would be drawing a boundary that does not
+    exist and the area figures would have nothing to come from.
+    """
+    od = _module()
+
+    for field in od.demo_fields():
+        assert field["geometry"]["type"] == "Polygon", "a demo field is not a polygon"
+        ring = field["geometry"]["coordinates"][0]
+        assert len(ring) >= 4, "a polygon needs at least three corners and a repeat"
+        assert ring[0] == ring[-1], "the ring does not close"
+        assert field["properties"]["area_ha"] > 0
+
+
+def test_the_dot_gives_way_to_the_boundary_when_you_zoom_in() -> None:
+    """A 12-pixel disc on top of an eight-hectare polygon shows a point, not a shape.
+
+    The marker exists only because the polygon is sub-pixel at national zoom.
+    Once the boundary is legible the marker is in the way, so it fades.
+    """
+    pytest.importorskip("folium")
+    od = _module()
+
+    for name in ("field_map", "field_map with verdicts", "coverage_map"):
+        drawn = _rendered(_every_map()[name])
+        assert "L.CircleMarker" in drawn, f"{name} never fades its markers"
+        assert f"map.getZoom() >= {od.PIN_UNTIL_ZOOM}" in drawn, (
+            f"{name} does not hand over at the documented zoom"
+        )
+
+
+def test_the_handover_script_runs_after_the_map_is_created() -> None:
+    """The bug this pins blanked the map completely, tiles and all.
+
+    Placed in the figure's html or script section, the handler is emitted before
+    the block that creates the map. Referring to the map variable there throws,
+    and the exception aborts the rest of that script -- which is where the view
+    is set and the tiles are loaded. The failure does not look like a broken
+    handler; it looks like an empty white rectangle.
+    """
+    pytest.importorskip("folium")
+
+    for name, canvas in _every_map().items():
+        drawn = canvas._repr_html_()
+        handler = drawn.find("function tune")
+        if handler == -1:
+            continue
+        created = drawn.find("L.map(")
+        assert created != -1
+        assert handler > created, (
+            f"{name} emits its zoom handler before the map exists, which throws "
+            f"and takes the rest of the map's script down with it"
+        )
+
+
+def test_the_handover_cannot_take_the_map_down_with_it() -> None:
+    """Decoration should not be able to break the thing it decorates."""
+    pytest.importorskip("folium")
+
+    drawn = _rendered(_every_map()["field_map"])
+
+    body = drawn[drawn.find("function tune"):]
+    assert "try {" in body and "catch" in body, (
+        "the zoom handler is unguarded, so a future change to it can blank the map"
+    )
+
+
+def test_a_map_of_one_field_frames_the_field_not_the_cell_around_it() -> None:
+    """Fitting to the masked cell keeps the boundary too small to hand over to.
+
+    81 km² against eight hectares: including the cell in the fit pulled a
+    single-field map out to a zoom where the polygon was two pixels wide and the
+    dot never got out of the way.
+    """
+    pytest.importorskip("folium")
+    od = _module()
+
+    field = od.demo_fields()[0]
+    ring = od._ring_of(field)
+    masked, _ = od.masked_ring(field)
+
+    drawn = _rendered(od.field_map([field]))
+    fitted = re.search(r"fitBounds\(\s*\[\[([-\d.]+),\s*([-\d.]+)\],\s*\[([-\d.]+),\s*([-\d.]+)\]",
+                       drawn)
+    assert fitted, "the map does not fit its bounds"
+    south, west, north, east = (float(value) for value in fitted.groups())
+
+    field_height = max(p[0] for p in ring) - min(p[0] for p in ring)
+    masked_height = max(p[0] for p in masked) - min(p[0] for p in masked)
+    assert north - south < masked_height / 2, "the map is framed on the masked cell"
+    assert north - south >= field_height, "the field does not fit in the frame"

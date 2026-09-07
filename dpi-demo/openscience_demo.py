@@ -41,6 +41,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
+from branca.element import MacroElement
+from jinja2 import Template
+
 import requests
 
 SETTINGS_FILE = Path(__file__).resolve().parent / "demo.env"
@@ -642,14 +645,31 @@ def _basemap(rings: list[list[list[float]]]):
     return canvas
 
 
+PIN_UNTIL_ZOOM = 12
+"""Above this zoom the dots fade and the boundaries speak for themselves.
+
+Every field here is a polygon -- a four-cornered S2 level-15 cell of about eight
+hectares -- and the dot exists only because eight hectares at national zoom is
+smaller than one screen pixel. Left on as you zoom in it becomes the opposite
+problem: a fixed 12-pixel disc sitting on top of the boundary it was standing in
+for, so the reader sees a point where there is a shape.
+
+Around zoom 12 a field is a few pixels across and starting to read as an area,
+which is the moment to hand over.
+"""
+
+
 def _pin(group, feature: dict[str, Any], colour: str, tooltip: str, popup=None) -> None:
     """A fixed-size dot on the field, for the maps that show the whole country.
 
-    Three hectares at national zoom is smaller than one screen pixel, so on the
+    Eight hectares at national zoom is smaller than one screen pixel, so on the
     verdict map the four fields were invisible until you zoomed into each one --
     which defeats a map whose job is to show all four verdicts at once. A circle
-    marker is sized in pixels rather than in degrees, so it stays legible at
-    every zoom, and the polygon underneath takes over as you zoom in.
+    marker is sized in pixels rather than in degrees, so it stays legible where
+    the polygon cannot be.
+
+    It is a stand-in, not the thing, so it gets out of the way: see
+    ``_hand_over_to_the_boundaries``.
     """
     import folium  # noqa: PLC0415
 
@@ -669,6 +689,67 @@ def _pin(group, feature: dict[str, Any], colour: str, tooltip: str, popup=None) 
         tooltip=tooltip,
         popup=popup,
     ).add_to(group)
+
+
+def _hand_over_to_the_boundaries(canvas, threshold: int = PIN_UNTIL_ZOOM) -> None:
+    """Fade the dots out once the polygons are big enough to see.
+
+    Leaflet has no declarative way to say "this layer applies below zoom N", so
+    this is a zoomend handler. It walks into feature groups because the markers
+    are inside them rather than directly on the map, and it leaves the polygons
+    alone -- only ``CircleMarker`` is touched, and ``L.Circle`` is excluded
+    because Leaflet makes it a subclass and it is measured in metres, not pixels.
+
+    Nothing here decides anything about the data; it is presentation, and if the
+    script fails the map is still correct, just with a dot on top of a boundary.
+    """
+    # A MacroElement on the map, rather than an Element on the figure. Both of
+    # the obvious placements run too early: figure.html renders into the body
+    # ahead of the map's script block, and figure.script renders ahead of it too
+    # -- measured, after the first attempt blanked the map completely. The
+    # reference to an undefined map variable threw, which aborted the rest of
+    # that script block, which included the call that sets the view and loads
+    # the tiles. A MacroElement's script macro is emitted inside the map's own
+    # block, after everything added before it.
+    canvas.add_child(_HandOver(threshold))
+
+
+class _HandOver(MacroElement):
+    """The zoomend handler above, placed so that it runs after the map exists."""
+
+    _template = Template("""
+        {% macro script(this, kwargs) %}
+        (function () {
+            var map = {{ this._parent.get_name() }};
+            function fade(layer, hidden) {
+                if (layer instanceof L.CircleMarker && !(layer instanceof L.Circle)) {
+                    layer.setStyle({
+                        opacity: hidden ? 0 : 1,
+                        fillOpacity: hidden ? 0 : 0.9,
+                    });
+                } else if (layer.eachLayer) {
+                    layer.eachLayer(function (inner) { fade(inner, hidden); });
+                }
+            }
+            function tune() {
+                // Guarded: this is decoration, and an exception here would take
+                // the rest of the map's script down with it.
+                try {
+                    var hidden = map.getZoom() >= {{ this.threshold }};
+                    map.eachLayer(function (layer) { fade(layer, hidden); });
+                } catch (e) { /* no view yet; zoomend will call again */ }
+            }
+            map.on('zoomend', tune);
+            map.on('overlayadd', tune);
+            map.whenReady(tune);
+        })();
+        {% endmacro %}
+    """)
+
+    def __init__(self, threshold: int) -> None:
+        super().__init__()
+        self._name = "HandOverToTheBoundaries"
+        self.threshold = threshold
 
 
 def _cell_area_km2(token: str) -> float:
@@ -732,8 +813,12 @@ def field_map(features: list[dict[str, Any]], *, screens: dict[str, dict[str, An
 
     rings = [_ring_of(feature) for feature in features]
     canvas = _basemap(rings)
-    masked = _add_masked(canvas, features, show=not screens)
-    canvas.fit_bounds(_bounds(rings + masked))
+    # Fitted to the fields, not to the masked cells around them. The cells are
+    # context and they are enormous -- 81 km² against eight hectares -- so
+    # including them in the fit pulled a single-field map out to a zoom where
+    # the boundary was two pixels and the dot never handed over to it.
+    _add_masked(canvas, features, show=not screens)
+    canvas.fit_bounds(_bounds(rings))
 
     # One layer per verdict, so a reader can isolate the cleared fields; one
     # layer for everything when there are no verdicts yet.
@@ -792,6 +877,7 @@ def field_map(features: list[dict[str, Any]], *, screens: dict[str, dict[str, An
     else:
         entries.append((DISCLOSURE["L1"][2], ACCENT, "solid"))
     _legend(canvas, entries, title="Verdict" if screens else "Disclosure tier")
+    _hand_over_to_the_boundaries(canvas)
     folium.LayerControl(collapsed=False).add_to(canvas)
     return canvas
 
@@ -1084,6 +1170,7 @@ def coverage_map(features: list[dict[str, Any]], layers: list[dict[str, Any]]):
         entries.append((f"{len(undeclared)} declaring no extent, not drawn", "#bdc3c7", "solid"))
 
     _legend(canvas, entries, title="Layer coverage")
+    _hand_over_to_the_boundaries(canvas)
     folium.LayerControl(collapsed=False).add_to(canvas)
     return canvas
 
