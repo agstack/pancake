@@ -2052,42 +2052,102 @@ def interviews_needed(population: int, one_in: int = 10) -> tuple[int, int, str]
     )
 
 
-def verifiable_sample(list_id: str, members: list[str], size: int) -> list[str]:
-    """Draw ``size`` members, so that anyone holding the list can check the draw.
+@dataclass
+class Beacon:
+    """A public random value nobody involved in the audit could have chosen."""
+
+    source: str
+    round: int
+    value: str
+
+    @property
+    def citation(self) -> str:
+        return f"{self.source} round {self.round}"
+
+
+def beacon(timeout: int = 30) -> Beacon | None:
+    """The latest value from drand, the League of Entropy's public beacon.
+
+    Public, unauthenticated, one value every thirty seconds, and every past
+    round stays retrievable and signed -- so a draw published today can still
+    be rechecked in five years, which is the whole requirement.
+
+    Returns None rather than raising, because a beacon being unreachable is a
+    reason to record a weaker draw honestly, not to fail.
+    """
+    try:
+        response = requests.get("https://api.drand.sh/public/latest", timeout=timeout)
+        if response.status_code != HTTP_OK:
+            return None
+        body = response.json()
+        return Beacon("drand", int(body["round"]), str(body["randomness"]))
+    except (requests.RequestException, ValueError, KeyError):
+        return None
+
+
+def beacon_at(round_number: int, timeout: int = 30) -> Beacon | None:
+    """One specific past round, which is how a published draw is rechecked."""
+    try:
+        response = requests.get(f"https://api.drand.sh/public/{round_number}", timeout=timeout)
+        if response.status_code != HTTP_OK:
+            return None
+        body = response.json()
+        return Beacon("drand", int(body["round"]), str(body["randomness"]))
+    except (requests.RequestException, ValueError, KeyError):
+        return None
+
+
+@dataclass
+class Draw:
+    """A sample, and everything Step 8 has to report about how it was chosen."""
+
+    list_id: str
+    seed: str
+    seed_description: str
+    grindable: bool
+    size: int
+    sample: list[str]
+    reserves: list[str]
+    stratum: str = ""
+
+    @property
+    def recipe(self) -> str:
+        """What somebody else runs to get the same names."""
+        return (
+            f"rank every member of list {self.list_id[:16]}... by "
+            f"SHA-256('{self.seed_description}' + ':' + geo_id), take the first {self.size}"
+        )
+
+
+def verifiable_sample(seed: str, members: list[str], size: int) -> list[str]:
+    """Draw ``size`` members as a pure function of ``seed``.
 
     Step 7 of the legality guide requires the selection be random, and Step 8
     requires reporting how it was made. The methods it offers are "a random
     number generator, drawing lots, spinning a bottle, or any equivalent
     method". Every one of them is unfalsifiable after the fact: an auditor
     handed a list of twenty-nine farms cannot tell a spun bottle from a
-    convenient choice, and the guide's own reporting requirement therefore
-    collects an assertion rather than evidence.
+    convenient choice, and the guide's reporting requirement therefore collects
+    an assertion rather than evidence.
 
-    A draw seeded by the list's own identifier is different in kind. The
-    identifier is derived from the membership, so it is fixed before the draw
-    and cannot be edited to suit it; and the draw is a pure function of that
-    identifier, so anybody holding the same list recomputes the same names and
-    a substitution shows up immediately.
-
-    Each member is scored SHA-256(list_id || member) and the lowest scores are
+    Each member is scored SHA-256(seed || member) and the lowest scores are
     taken. Sorting by a hash of the pair rather than shuffling with a seeded
-    generator keeps the result independent of Python's RNG, which is an
-    implementation detail that has changed before and would silently invalidate
-    every previously published draw.
+    generator keeps the result independent of Python's RNG, an implementation
+    detail that has changed before and would silently invalidate every
+    previously published draw.
 
-    The full ranking is returned to the caller by ``draw_with_reserves``: the
-    guide asks for more names than needed, so that absences do not push the
-    sample below the size set in Step 5.
+    What ``seed`` should be is the whole question, and it is answered by
+    ``draw``, not here.
     """
-    return [member for _, member in _ranked(list_id, members)][:size]
+    return [member for _, member in _ranked(seed, members)][:size]
 
 
-def _ranked(list_id: str, members: list[str]) -> list[tuple[str, str]]:
+def _ranked(seed: str, members: list[str]) -> list[tuple[str, str]]:
     """(score, member) for every member, lowest score first."""
     import hashlib  # noqa: PLC0415
 
     scored = [
-        (hashlib.sha256(f"{list_id}:{member}".encode()).hexdigest(), member)
+        (hashlib.sha256(f"{seed}:{member}".encode()).hexdigest(), member)
         for member in members
     ]
     # Sorted on the score first and the member second, so that two members
@@ -2096,33 +2156,132 @@ def _ranked(list_id: str, members: list[str]) -> list[tuple[str, str]]:
     return sorted(scored)
 
 
+def draw(list_id: str, members: list[str], size: int,
+         entropy: Beacon | str | None = None, stratum: str = "") -> Draw:
+    """Draw a sample, and record honestly how much the draw is worth.
+
+    **A list_id alone is not enough, and the first version of this said it
+    was.** It read: the identifier is derived from the membership, so it "cannot
+    be edited to suit" the draw. It can. Editing the membership changes the
+    identifier, which changes the draw completely -- so whoever composes the
+    population can add a member, recompute, see whether the farms they would
+    rather not have visited came up, and try again. Each attempt is a fresh
+    independent draw and costs nothing.
+
+    The arithmetic makes it worse rather than better. With a thousand farms and
+    a sample of twenty-nine, any one farm is drawn 2.9% of the time, so a
+    grinder wanting one farm left out succeeds on the first try nineteen times
+    in twenty without trying at all. Wanting a hundred particular farms all
+    left out succeeds about one attempt in twenty: twenty recomputations, a
+    fraction of a second.
+
+    What the list_id genuinely gives is **binding**: the draw belongs to one
+    exact population and cannot be presented as a draw from another, and any
+    holder recomputes it. That is worth having. What it does not give is
+    protection against the population being chosen to produce a convenient
+    draw. It moves the trust rather than removing it -- out of the draw, into
+    the population definition, which is where Step 3 already puts it. Honest,
+    and less than was claimed.
+
+    Removing it needs a value the composer could not have known when the
+    membership was fixed:
+
+    - **a public beacon.** Commit the list_id, then draw on a round published
+      afterwards. Grinding would require predicting drand, and the round stays
+      retrievable so the draw is recheckable for as long as the audit matters.
+    - **a nonce from the auditor,** handed over after the list is committed.
+      No external dependency, and it trusts the auditor -- usually reasonable,
+      since their incentive runs the other way, and they are already trusted
+      with the interviews.
+
+    ``entropy=None`` still works and is still reproducible. It is recorded as
+    ``grindable`` so that a report cannot quietly claim more than it has.
+    """
+    if isinstance(entropy, Beacon):
+        seed_description, extra, grindable = entropy.citation, entropy.value, False
+    elif entropy:
+        seed_description, extra, grindable = "auditor nonce", str(entropy), False
+    else:
+        seed_description, extra, grindable = "list_id alone", "", True
+
+    # The stratum name is part of the seed so that each subgroup draws
+    # independently; without it, a member's rank would be the same in every
+    # stratum it appeared in.
+    seed = ":".join(part for part in (list_id, extra, stratum) if part)
+    ranking = [member for _, member in _ranked(seed, members)]
+    wanted = min(size, len(ranking))
+    return Draw(
+        list_id=list_id,
+        seed=seed,
+        seed_description=f"{list_id[:16]}...{(' + ' + seed_description) if extra else ''}"
+                         + (f" + {stratum}" if stratum else ""),
+        grindable=grindable,
+        size=wanted,
+        sample=ranking[:wanted],
+        reserves=ranking[wanted:],
+        stratum=stratum,
+    )
+
+
+def draw_by_subgroup(list_id: str, strata: dict[str, list[str]], sizes: dict[str, int],
+                     entropy: Beacon | str | None = None) -> dict[str, Draw]:
+    """A separate draw within each subgroup, which is what Step 7 asks for.
+
+    Step 5: "each subgroup requires a full sample within each one, and every
+    member of the total population must fall into one of the subgroups". The
+    second half is checked here, because a member belonging to no subgroup or
+    to two is a defect in the population definition that would otherwise show
+    up as a quietly wrong denominator.
+    """
+    seen: dict[str, str] = {}
+    for name, members in strata.items():
+        for member in members:
+            if member in seen:
+                raise ValueError(
+                    f"{member[:16]}... is in both '{seen[member]}' and '{name}'; "
+                    "subgroups must partition the population"
+                )
+            seen[member] = name
+    return {
+        name: draw(list_id, members, sizes.get(name, 0), entropy=entropy, stratum=name)
+        for name, members in strata.items()
+    }
+
+
 def draw_with_reserves(list_id: str, members: list[str], size: int) -> tuple[list[str], list[str]]:
-    """The sample, and the reserves to fall back on, in the order to use them.
+    """The sample and the reserves, in the order to use them.
 
     Reserves are the next names in the same ranking rather than a second draw,
     so replacing an absentee does not need a new seed and cannot be used to
-    steer the sample: whoever checks the draw recomputes the whole ranking and
-    sees which replacement was due.
+    steer the sample: whoever checks recomputes the whole ranking and sees
+    which replacement was due.
     """
-    ranking = [member for _, member in _ranked(list_id, members)]
-    return ranking[:size], ranking[size:]
+    made = draw(list_id, members, size)
+    return made.sample, made.reserves
 
 
-def show_draw(list_id: str, members: list[str], sample: list[str], reserves: list[str]) -> None:
-    """The draw, and the recipe for checking it."""
-    print(f"population        {len(members)} fields in list {list_id[:16]}...")
-    print(f"drawn             {len(sample)}")
-    print(f"held in reserve   {len(reserves)}")
+def show_draw(made: Draw, population: int) -> None:
+    """The draw, what it is worth, and how to check it."""
+    print(f"population        {population} fields in list {made.list_id[:16]}...")
+    print(f"seeded by         {made.seed_description}")
+    print(f"drawn             {made.size}")
+    print(f"held in reserve   {len(made.reserves)}")
     print()
     print("  the draw, in the order the ranking put them:")
-    for position, member in enumerate(sample, start=1):
+    for position, member in enumerate(made.sample, start=1):
         print(f"    {position:3}. {member[:24]}...")
-    if reserves:
-        print(f"    next in line: {reserves[0][:24]}...")
+    if made.reserves:
+        print(f"    next in line: {made.reserves[0][:24]}...")
     print()
-    print("  to check it, recompute: sort the members by SHA-256(list_id + ':' + geo_id)")
-    print("  and take the first n. The list_id is derived from the membership, so it")
-    print("  was fixed before the draw and cannot be edited to suit it.")
+    print(f"  to check it: {made.recipe}")
+
+    if made.grindable:
+        print()
+        print("  NOTE: seeded by the list_id alone, so this draw is reproducible but")
+        print("  not unpredictable. Whoever composed the population could have added")
+        print("  or dropped a member, recomputed, and tried again until the sample")
+        print("  suited them. Binding the draw to a beacon round published after the")
+        print("  population was committed is what removes that, and is not done here.")
 
 
 # ==========================================================================

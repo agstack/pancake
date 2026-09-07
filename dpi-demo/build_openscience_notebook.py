@@ -1066,66 +1066,175 @@ Sampling cost is set by the confidence you want, not by the size of the base —
 which is the answer to *we have ten thousand smallholders, this cannot be
 done.* It can; it costs 29 interviews.
 
-### The part that is missing, and that a GeoID can supply
+### The part that is missing, and that a list can half-supply
 
 Step 7 requires the selection be random and Step 8 requires reporting how it
 was made. The methods the guide offers are *a random number generator, drawing
 lots, spinning a bottle, or any equivalent method.*
 
-Every one of those is **unfalsifiable after the fact.** An auditor handed a
-list of 29 farms cannot tell a spun bottle from a convenient choice, so Step 8
+Every one of those is **unfalsifiable after the fact.** An auditor handed a list
+of 29 farms cannot tell a spun bottle from a convenient choice, so Step 8
 collects an assertion where it means to collect evidence. That is not a
 criticism of the guide — with a paper population there is nothing better
 available.
 
-A list artifact makes something better available. Its identifier is derived
-from its membership, so it is fixed before the draw and cannot be edited to
-suit it. Seed the draw from that identifier and the selection becomes a pure
-function of the population: anyone holding the same list recomputes the same
-names, and a substitution shows up immediately.
+A list artifact makes something better available, though **less than it first
+appears**, and the honest version of the argument is worth more than the
+overstated one.
 """)
 
 code("""
-with od.step("draw a verifiable sample from the list") as s:
+with od.step("draw a sample from the list, seeded by the list alone") as s:
     if CONSENT.list_id and any(GEOIDS.values()):
         MEMBERS = [g for g in GEOIDS.values() if g]
         WANTED, _, why = od.interviews_needed(len(MEMBERS), one_in=10)
-        # Capped at the population: this demo has four fields, and the guide's
+        # Capped at the population: this demo has four fields and the guide's
         # smallest tabulated population is a hundred.
-        SAMPLE, RESERVES = od.draw_with_reserves(CONSENT.list_id, MEMBERS, min(WANTED, 2))
-        od.show_draw(CONSENT.list_id, MEMBERS, SAMPLE, RESERVES)
+        SIZE = min(WANTED, 2)
+        NAIVE = od.draw(CONSENT.list_id, MEMBERS, SIZE)
+        od.show_draw(NAIVE, len(MEMBERS))
+    else:
+        od.skip(s, "there is no list to draw from")
+""")
+
+md("""
+It is reproducible, and that much is real: the draw belongs to one exact
+population, cannot be passed off as a draw from another, and any holder of the
+list recomputes it.
+
+**But it is not unpredictable, and the first version of this section claimed it
+was.** It said the identifier is derived from the membership, so it "cannot be
+edited to suit" the draw. It can. Editing the membership changes the identifier,
+which changes the draw completely — so whoever composes the population can add
+a member, recompute, see whether the farms they would rather not have visited
+came up, and try again. Each attempt is a fresh independent draw and costs
+nothing.
+
+The arithmetic is worse than it sounds:
+""")
+
+code("""
+with od.step("measure how cheap it is to grind the draw") as s:
+    # Add one dummy member, which changes the list_id and so redraws entirely.
+    # Count how often a field the composer wants left out is in fact left out.
+    TARGET = MEMBERS[0]
+    ESCAPED = sum(
+        1 for attempt in range(500)
+        if TARGET not in od.verifiable_sample(
+            CONSENT.list_id[:-4] + f"{attempt:04x}",
+            MEMBERS + [f"{9_000_000 + attempt:064x}"],
+            SIZE)
+    )
+    print(f"  a composer wanting one field left out of the sample succeeds")
+    print(f"  in {ESCAPED} of 500 recomputations ({ESCAPED / 5:.0f}%).")
+    print()
+    print("  At the guide's own scale it is easier still: with a thousand farms")
+    print("  and a sample of 29, any one farm is drawn 2.9% of the time, so the")
+    print("  first attempt succeeds nineteen times in twenty with no grinding at")
+    print("  all. Wanting a hundred particular farms all left out takes about")
+    print("  twenty recomputations. A fraction of a second.")
+    od.local(s, "arithmetic on the draw above")
+""")
+
+md("""
+So what the list_id gives is **binding**, not unpredictability. It moves the
+trust rather than removing it — out of the draw and into the population
+definition, which is where Step 3 already puts it: *good population definition
+is a precondition for a meaningful verification exercise.* Worth having, and
+less than was claimed.
+
+### Removing it properly
+
+Grinding needs a seed the composer could not have known when the membership was
+fixed. Commit the `list_id`, then draw on a public randomness beacon round
+published **after** the commitment. drand — the League of Entropy's beacon — is
+public, needs no key, publishes every thirty seconds, and keeps every past
+round retrievable and signed, so a draw published today can still be rechecked
+in five years.
+""")
+
+code("""
+with od.step("draw again, bound to a beacon round nobody could predict") as s:
+    ROUND = od.beacon()
+    BOUND = None
+    if not ROUND:
+        od.empty(s, "drand is unreachable from here")
+    elif CONSENT.list_id and MEMBERS:
+        BOUND = od.draw(CONSENT.list_id, MEMBERS, SIZE, entropy=ROUND)
+        od.show_draw(BOUND, len(MEMBERS))
     else:
         od.skip(s, "there is no list to draw from")
 """)
 
 code("""
-with od.step("show that anyone holding the list recomputes the same draw") as s:
-    if CONSENT.list_id and MEMBERS:
-        # The same function, run again from the same public inputs. An auditor
-        # runs exactly this, with no access to whoever made the original draw.
-        AGAIN = od.verifiable_sample(CONSENT.list_id, list(reversed(MEMBERS)), len(SAMPLE))
-        print(f"  the auditor's recomputation matches: {AGAIN == SAMPLE}")
-        print(f"  ...even though the members were handed over in a different order")
-
-        # And a tampered population cannot pass itself off as this one.
-        TAMPERED = od.verifiable_sample(CONSENT.list_id[:-1] + 'f', MEMBERS, len(SAMPLE))
-        print(f"  a draw seeded from a different list_id gives the same names: "
-              f"{TAMPERED == SAMPLE}")
-        od.local(s, "pure function of the list_id and the membership")
+with od.step("show the draw still checks out years later") as s:
+    if ROUND and BOUND:
+        # Exactly what an auditor does: fetch the cited round and recompute.
+        # Nothing from the original run is reused except its published inputs.
+        FETCHED = od.beacon_at(ROUND.round)
+        REDONE = od.draw(CONSENT.list_id, list(reversed(MEMBERS)), SIZE, entropy=FETCHED)
+        OTHER = od.draw(CONSENT.list_id, MEMBERS, SIZE,
+                        entropy=od.Beacon('drand', ROUND.round - 1, 'f' * 64))
+        print(f"  round {ROUND.round} is still retrievable:  {FETCHED is not None}")
+        print(f"  the auditor's recomputation matches: {REDONE.sample == BOUND.sample}")
+        print(f"  ...from the members in a different order, holding nothing else")
+        print(f"  a draw on a different round differs: {OTHER.sample != BOUND.sample}")
     else:
-        od.skip(s, "there is no draw to check")
+        od.skip(s, "there is no beacon-bound draw to check")
 """)
 
 md("""
-Order-independent, because the ranking is by a hash of each member rather than
-by a shuffle of the sequence; and bound to the list, because the identifier
-seeds it. Report the `list_id` and the sample size and the draw is reproducible
-by anyone, which is what Step 8 was asking for.
+Now the composer would have to predict drand to grind, and the auditor needs
+only the list, the round number and the sample size to check the whole thing.
+That is what Step 8 was asking for.
 
-**What this is not.** It does not make the interviews honest, and it says
+An auditor-supplied nonce, handed over after the list is committed, does the
+same job with no external dependency and a different trust assumption: it
+trusts the auditor, whose incentive runs the other way and who is already
+trusted with the interviews. `draw()` takes either.
+
+### Subgroups
+
+Step 5 allows the population to be divided where subgroups may be expected to
+differ, and requires that *every member of the total population must fall into
+one of the subgroups*. Step 7 then wants a separate draw inside each.
+""")
+
+code("""
+with od.step("draw separately within each subgroup") as s:
+    if BOUND and len(MEMBERS) >= 3:
+        STRATA = {"steep_slope": MEMBERS[:2], "valley_floor": MEMBERS[2:]}
+        BY_GROUP = od.draw_by_subgroup(
+            CONSENT.list_id, STRATA, {name: 1 for name in STRATA}, entropy=ROUND)
+        for name, made in BY_GROUP.items():
+            print(f"  {name:14} drew {made.size} of "
+                  f"{made.size + len(made.reserves)}: {made.sample[0][:20]}...")
+        print()
+        # A field in two subgroups, or in none, is a defect in the population
+        # definition that would otherwise surface as a wrong denominator.
+        try:
+            od.draw_by_subgroup(CONSENT.list_id,
+                                {"a": MEMBERS[:2], "b": MEMBERS[1:]}, {"a": 1, "b": 1})
+            print("  overlapping subgroups were accepted -- that is a defect")
+        except ValueError as complaint:
+            print(f"  overlapping subgroups refused: {complaint}")
+    else:
+        od.skip(s, "there are too few fields to divide")
+""")
+
+md("""
+Each subgroup draws independently, because the subgroup name is part of the
+seed; without that a field would rank identically in every group it appeared
+in. The partition is checked rather than assumed.
+
+**What none of this is.** It does not make the interviews honest, and it says
 nothing about the eight legality categories themselves. It closes exactly one
-gap: whether the sample was chosen fairly is now checkable rather than
+gap: whether the sample was chosen fairly becomes checkable instead of
 asserted. Everything else in the guide still needs people.
+
+**And it is a draft.** Whether an auditor would accept a recomputable draw in
+place of a witnessed one is a question about audit practice, not about code,
+and nobody who does this work has been asked yet. Recorded as AG-014.
 """)
 
 # ==========================================================================

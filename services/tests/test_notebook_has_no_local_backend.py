@@ -29,6 +29,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import requests
 
 DEMO = Path(__file__).resolve().parents[2] / "dpi-demo"
 NOTEBOOK = DEMO / "openscience_dpi_demo.ipynb"
@@ -1960,3 +1961,203 @@ def test_the_sections_are_numbered_in_the_order_they_are_read() -> None:
     numbers = [int(n) for n in re.findall(r"^## (\d+)\. ", built, re.M)]
 
     assert numbers == list(range(len(numbers))), f"sections run {numbers}"
+
+
+# --------------------------------------------------------------------------
+# AG-014: the draw is grindable unless something unpredictable seeds it
+# --------------------------------------------------------------------------
+
+
+def test_a_draw_seeded_by_the_list_alone_admits_it_is_grindable() -> None:
+    """The correction. The first version claimed the list_id was enough."""
+    od = _module()
+
+    made = od.draw(_LIST_ID, _MEMBERS, 9)
+
+    assert made.grindable is True
+
+
+def test_a_beacon_bound_draw_is_not_grindable() -> None:
+    od = _module()
+
+    made = od.draw(_LIST_ID, _MEMBERS, 9, entropy=od.Beacon("drand", 6_446_150, "ab" * 32))
+
+    assert made.grindable is False
+    assert "drand round 6446150" in made.seed_description
+
+
+def test_an_auditors_nonce_also_removes_the_grind() -> None:
+    """A different trust assumption, and the guide already trusts the auditor."""
+    od = _module()
+
+    made = od.draw(_LIST_ID, _MEMBERS, 9, entropy="nonce-handed-over-at-the-meeting")
+
+    assert made.grindable is False
+    assert "auditor nonce" in made.seed_description
+
+
+def test_a_grindable_draw_says_so_where_a_reader_will_see_it() -> None:
+    """A flag nobody prints is a flag nobody acts on."""
+    od = _module()
+    shown = io.StringIO()
+
+    with contextlib.redirect_stdout(shown):
+        od.show_draw(od.draw(_LIST_ID, _MEMBERS, 5), len(_MEMBERS))
+
+    text = shown.getvalue()
+    assert "NOTE" in text
+    assert "not unpredictable" in text
+
+
+def test_a_beacon_bound_draw_is_not_nagged() -> None:
+    """A warning printed on every draw is one nobody reads."""
+    od = _module()
+    shown = io.StringIO()
+
+    with contextlib.redirect_stdout(shown):
+        od.show_draw(
+            od.draw(_LIST_ID, _MEMBERS, 5, entropy=od.Beacon("drand", 1, "cd" * 32)),
+            len(_MEMBERS),
+        )
+
+    assert "NOTE" not in shown.getvalue()
+
+
+def test_a_different_beacon_round_draws_different_names() -> None:
+    """If the beacon did not change the draw, it would be decoration."""
+    od = _module()
+
+    first = od.draw(_LIST_ID, _MEMBERS, 9, entropy=od.Beacon("drand", 1, "ab" * 32))
+    second = od.draw(_LIST_ID, _MEMBERS, 9, entropy=od.Beacon("drand", 2, "ef" * 32))
+
+    assert first.sample != second.sample
+
+
+def test_the_same_round_redraws_the_same_names_from_nothing_but_the_inputs() -> None:
+    """What an auditor does years later: fetch the cited round and recompute."""
+    od = _module()
+    cited = od.Beacon("drand", 6_446_150, "ab" * 32)
+
+    original = od.draw(_LIST_ID, _MEMBERS, 9, entropy=cited)
+    auditor = od.draw(_LIST_ID, list(reversed(_MEMBERS)), 9,
+                      entropy=od.Beacon("drand", 6_446_150, "ab" * 32))
+
+    assert auditor.sample == original.sample
+
+
+def test_the_recipe_names_everything_needed_to_recheck_it() -> None:
+    """Step 8 asks how the sample was chosen. A recipe missing a term is not one."""
+    od = _module()
+
+    recipe = od.draw(_LIST_ID, _MEMBERS, 9,
+                     entropy=od.Beacon("drand", 6_446_150, "ab" * 32)).recipe
+
+    assert _LIST_ID[:16] in recipe
+    assert "6446150" in recipe
+    assert "9" in recipe
+
+
+def test_subgroups_draw_independently_of_each_other() -> None:
+    """Without the stratum in the seed, a field ranks the same in every group."""
+    od = _module()
+
+    # The same members under two stratum names. draw_by_subgroup rightly
+    # refuses that as a non-partition, so the stratum is exercised through
+    # draw() directly -- what is under test is whether the name reaches the seed.
+    steep = od.draw(_LIST_ID, _MEMBERS, 5, stratum="steep")
+    flat = od.draw(_LIST_ID, _MEMBERS, 5, stratum="flat")
+
+    assert steep.sample != flat.sample, (
+        "the same population drawn under two subgroup names gives the same "
+        "names, so the subgroup is not reaching the seed"
+    )
+
+
+def test_the_subgroups_of_a_real_partition_each_draw_from_their_own_members() -> None:
+    od = _module()
+
+    both = od.draw_by_subgroup(
+        _LIST_ID, {"steep": _MEMBERS[:20], "flat": _MEMBERS[20:]}, {"steep": 5, "flat": 5}
+    )
+
+    assert set(both["steep"].sample) <= set(_MEMBERS[:20])
+    assert set(both["flat"].sample) <= set(_MEMBERS[20:])
+    assert not set(both["steep"].sample) & set(both["flat"].sample)
+
+
+def test_a_population_whose_subgroups_overlap_is_refused() -> None:
+    """Step 5: every member must fall into one subgroup. One, not two."""
+    od = _module()
+
+    with pytest.raises(ValueError, match="partition"):
+        od.draw_by_subgroup(
+            _LIST_ID, {"a": _MEMBERS[:20], "b": _MEMBERS[15:]}, {"a": 3, "b": 3}
+        )
+
+
+def test_a_sample_larger_than_its_subgroup_does_not_invent_members() -> None:
+    od = _module()
+
+    made = od.draw(_LIST_ID, _MEMBERS[:3], 10)
+
+    assert made.size == 3
+    assert len(made.sample) == 3
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param(lambda *a, **k: (_ for _ in ()).throw(_Timeout("no route")), id="timeout"),
+        pytest.param(lambda *a, **k: _Response(503, {}), id="unavailable"),
+        pytest.param(lambda *a, **k: _Response(200, {"nonsense": True}), id="unexpected-shape"),
+    ],
+)
+def test_an_unreachable_beacon_is_reported_rather_than_raised(monkeypatch, failure) -> None:
+    """A beacon outage downgrades the claim; it does not fail the run.
+
+    Behaviour rather than a text search. The text version passed while the
+    except clause re-raised, because the function returns None elsewhere too.
+    """
+    od = _module()
+    monkeypatch.setattr(od.requests, "get", failure)
+
+    assert od.beacon() is None
+    assert od.beacon_at(6_446_150) is None
+
+
+class _Timeout(requests.RequestException):
+    """The exception the module's except clause is written to catch."""
+
+
+def test_a_working_beacon_carries_the_round_it_came_from() -> None:
+    """The other half. A citation missing the round cannot be rechecked."""
+    od = _module()
+
+    assert od.Beacon("drand", 6_446_150, "ab" * 32).citation == "drand round 6446150"
+
+
+def test_the_notebook_shows_the_grind_before_it_shows_the_cure() -> None:
+    """The argument only lands in that order, and the overstatement came first."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    naive = built.index("seeded by the list alone")
+    grind = built.index("measure how cheap it is to grind")
+    cure = built.index("bound to a beacon round nobody could predict")
+
+    assert naive < grind < cure
+
+
+def test_the_notebook_no_longer_claims_the_list_id_cannot_be_edited() -> None:
+    """The claim that was wrong, pinned so it cannot come back."""
+    built = " ".join((DEMO / "build_openscience_notebook.py").read_text().split())
+
+    assert "cannot be edited to suit it" not in built
+    assert '"cannot be edited to suit" the draw. It can.' in built
+
+
+def test_the_draft_says_it_is_a_draft() -> None:
+    """Nobody who does legality audits has been asked whether this passes."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    assert "AG-014" in built
+    assert "nobody who does this work has been asked yet" in built
