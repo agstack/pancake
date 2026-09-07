@@ -57,28 +57,40 @@ Not committed, because it names a deployment and can hold a token.
 """
 
 
-def _load_settings(path: Path = SETTINGS_FILE) -> list[str]:
+def _load_settings(path: Path = SETTINGS_FILE) -> tuple[list[str], list[str]]:
     """Read ``KEY=value`` lines into the environment, without overriding it.
 
     A real environment variable always wins, so a run can be pointed elsewhere
     for one cell without editing the file.
+
+    Returns the keys it set and the keys the file declares that something else
+    had already set. Both, rather than just the first, because the notebook
+    reloads this module: on the second pass everything is already in the
+    environment, nothing is applied, and reporting only what was applied made
+    the first cell say "demo.env: not read" about a file it had just read.
     """
     if not path.is_file():
-        return []
-    loaded = []
+        return [], []
+    applied, overridden = [], []
     for line in path.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
         key, value = key.strip(), value.strip().strip("\"'")
-        if key and value and not os.environ.get(key):
+        if not (key and value):
+            continue
+        if os.environ.get(key):
+            overridden.append(key)
+        else:
             os.environ[key] = value
-            loaded.append(key)
-    return loaded
+            applied.append(key)
+    return applied, overridden
 
 
-SETTINGS_LOADED = _load_settings()
+SETTINGS_APPLIED, SETTINGS_OVERRIDDEN = _load_settings()
+SETTINGS_LOADED = [*SETTINGS_APPLIED, *SETTINGS_OVERRIDDEN]
+"""Every key demo.env declares, whether this process set it or found it set."""
 
 HUB_URL = os.environ.get("HUB_URL", "http://localhost:8000")
 NODE_URL = os.environ.get("AR2_NODE_URL", "http://localhost:8001")
@@ -451,9 +463,18 @@ def have_folium() -> bool:
 
 
 def maps_unavailable() -> str:
+    """Why there is no map here, and the one command that fixes it.
+
+    The first cell installs everything in requirements.txt, so reaching this at
+    all means either that cell was skipped or the install failed. Naming the
+    requirements file rather than `pip install folium` keeps one declaration of
+    what this notebook needs instead of two that can disagree.
+    """
     return (
-        "maps need folium, which is not installed here: pip install folium\n"
-        "  Everything else in this notebook runs without it."
+        f"maps need folium, which is not installed in this kernel.\n"
+        f"  Run the first cell, which installs everything in requirements.txt, or:\n"
+        f"      cd {SETTINGS_FILE.parent} && pip install -r requirements.txt\n"
+        f"  Everything else in this notebook runs without it."
     )
 
 

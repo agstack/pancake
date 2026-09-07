@@ -1,5 +1,14 @@
 # PnD DPI OpenScience Demo
 
+> **Looking for the open-science notebook?** Everything needed to run
+> [`openscience_dpi_demo.ipynb`](openscience_dpi_demo.ipynb) — the EUDR
+> deforestation walkthrough — is in
+> **[README-openscience.md](README-openscience.md)**. It needs a virtualenv and
+> four addresses, not Docker, and none of the stack below.
+>
+> The rest of this page is the pest-and-disease demo, which does run locally.
+
+
 A one-command local stack that shows the AgStack DPI end to end for pest & disease:
 
 ```

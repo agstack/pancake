@@ -320,8 +320,9 @@ def test_the_environment_wins_over_the_file() -> None:
     before = _os.environ.get(key)
     _os.environ[key] = "http://set-by-the-environment:9999"
     try:
-        loaded = od._load_settings(settings)
-        assert key not in loaded, "the file overwrote a variable that was already set"
+        applied, overridden = od._load_settings(settings)
+        assert key not in applied, "the file overwrote a variable that was already set"
+        assert key in overridden, "an overridden key should still be reported as declared"
         assert _os.environ[key] == "http://set-by-the-environment:9999"
     finally:
         if before is None:

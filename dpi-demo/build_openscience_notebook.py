@@ -260,8 +260,53 @@ if _HOME is None:
             export PANCAKE_DPI_DEMO=<your pancake checkout>/dpi-demo
     \"\"\").strip())
 
+import importlib, importlib.util, subprocess
+
+# Install what is missing, into this kernel, from the file that declares it.
+#
+# The support module imports requests at module level, so this has to run before
+# it is imported rather than at the first cell that needs a map. sys.executable
+# rather than a bare `pip` so it lands in the interpreter actually running this
+# notebook, which is the usual way a "pip install" that appeared to succeed ends
+# up in some other environment. cwd is _HOME because requirements.txt refers to
+# ../services relative to itself.
+_NEEDED = {"requests": "requests", "httpx": "httpx", "folium": "folium",
+           "s2sphere": "s2sphere", "mcp": "mcp"}
+_missing = [p for module, p in _NEEDED.items() if importlib.util.find_spec(module) is None]
+if _missing:
+    print(f"dependencies     installing {', '.join(_missing)} into this kernel")
+    _pip = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"],
+        cwd=str(_HOME), capture_output=True, text=True,
+    )
+    importlib.invalidate_caches()
+    _still = [p for module, p in _NEEDED.items() if importlib.util.find_spec(module) is None]
+    if _still:
+        raise SystemExit(textwrap.dedent(f\"\"\"
+            Could not install {', '.join(_still)}.
+
+            pip said:
+            {(_pip.stderr or _pip.stdout or '(nothing)').strip()[:800]}
+
+            Install by hand and restart the kernel:
+                cd {_HOME} && pip install -r requirements.txt
+        \"\"\").strip())
+    print(f"                 installed; no restart needed")
+else:
+    print(f"dependencies     all present")
+
 sys.path.insert(0, str(_HOME))
-import importlib
+
+# Pancake's own package, for the step that turns a screen into a BITE.
+# requirements.txt installs it editable, but an editable install takes effect
+# through a .pth file read at interpreter startup, so on the very first run in a
+# fresh kernel it is installed and still not importable -- which showed up as
+# that one step skipping for no visible reason. Adding the source directory is
+# deterministic and costs nothing when pip already did the job.
+_services = _HOME.parent / "services"
+if _services.is_dir() and str(_services) not in sys.path:
+    sys.path.append(str(_services))
+
 import openscience_demo as od
 
 # Python caches modules, so a kernel that imported this before the file changed
