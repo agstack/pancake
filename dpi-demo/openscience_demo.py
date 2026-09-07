@@ -1643,8 +1643,27 @@ def _why_the_grant_failed(response: requests.Response) -> str:
     return f"HTTP {response.status_code} {body[:200]}"
 
 
-def field_grant(geo_ids: list[str], token: str, *, purpose: str = "open-science demo") -> tuple[str | None, str]:
-    """A field-access credential for these GeoIDs, and how it went.
+@dataclass
+class Consent:
+    """An issued grant, with the handles needed to use and to withdraw it.
+
+    ``field_grant`` returns only the credential, which is all most of the
+    notebook needs. Showing consent being *withdrawn* needs the ``jti`` to
+    revoke, and tracing needs the ``list_id`` the grant is scoped to -- a grant
+    presented against any other list is refused, and AR2 refuses it as a 404
+    rather than a 403 so that asking cannot confirm the list exists.
+    """
+
+    credential: str | None
+    list_id: str | None
+    jti: str | None
+    why: str
+
+
+def consent_for(
+    geo_ids: list[str], token: str, *, purpose: str = "open-science demo", name: str = "openscience-demo"
+) -> Consent:
+    """Create a field list and issue a grant over it.
 
     Two calls, not one. Pancake has no ``POST /grants``: a grant is issued
     against a *field list*, so the list is created first at ``POST /fieldlists``
@@ -1653,18 +1672,14 @@ def field_grant(geo_ids: list[str], token: str, *, purpose: str = "open-science 
     which it reported as the grant being unavailable.
     """
     try:
-        made = post(
-            f"{PANCAKE_URL}/fieldlists",
-            token=token,
-            json={"name": "openscience-demo", "geoids": geo_ids},
-        )
+        made = post(f"{PANCAKE_URL}/fieldlists", token=token, json={"name": name, "geoids": geo_ids})
     except requests.RequestException as exc:
-        return None, f"Pancake at {PANCAKE_URL} could not be reached: {exc.__class__.__name__}"
+        return Consent(None, None, None, f"Pancake at {PANCAKE_URL} could not be reached: {exc.__class__.__name__}")
     if not made.ok:
-        return None, f"the field list was refused: HTTP {made.status_code} {made.text[:160]}"
+        return Consent(None, None, None, f"the field list was refused: HTTP {made.status_code} {made.text[:160]}")
     list_id = (made.json() or {}).get("list_id")
     if not list_id:
-        return None, f"the field list came back without a list_id: {made.text[:160]}"
+        return Consent(None, None, None, f"the field list came back without a list_id: {made.text[:160]}")
 
     issued = post(
         f"{PANCAKE_URL}/grants/issue",
@@ -1678,11 +1693,139 @@ def field_grant(geo_ids: list[str], token: str, *, purpose: str = "open-science 
         },
     )
     if not issued.ok:
-        return None, f"the grant was refused: {_why_the_grant_failed(issued)}"
+        return Consent(None, list_id, None, f"the grant was refused: {_why_the_grant_failed(issued)}")
     credential = (issued.json() or {}).get("credential")
     if not credential:
-        return None, f"the grant came back without a credential: {issued.text[:160]}"
-    return credential, f"list {list_id[:12]}... granted at L1 for {purpose!r}"
+        return Consent(None, list_id, None, f"the grant came back without a credential: {issued.text[:160]}")
+    return Consent(
+        credential,
+        list_id,
+        _jti_of(credential),
+        f"list {list_id[:12]}... granted at L1 for {purpose!r}",
+    )
+
+
+def _jti_of(credential: str) -> str | None:
+    """The credential's own identifier, which is what revocation names.
+
+    An SD-JWT is the issuer-signed JWT, then a tilde, then the disclosures. Read
+    without verifying: verification is Pancake's and AR2's job, and this only
+    needs to know which credential to ask Pancake to withdraw.
+    """
+    try:
+        claims = credential.split("~")[0].split(".")[1]
+        payload = json.loads(base64.urlsafe_b64decode(claims + "=" * (-len(claims) % 4)))
+    except (IndexError, ValueError, json.JSONDecodeError):
+        return None
+    return payload.get("jti")
+
+
+def revoke(jti: str, token: str) -> tuple[bool, str]:
+    """Withdraw a grant, by the credential's own identifier."""
+    try:
+        response = post(f"{PANCAKE_URL}/grants/revoke", token=token, json={"jti": jti})
+    except requests.RequestException as exc:
+        return False, f"Pancake could not be reached: {exc.__class__.__name__}"
+    if not response.ok:
+        return False, f"the revocation was refused: HTTP {response.status_code} {response.text[:160]}"
+    status = (response.json() or {}).get("status", "revoked")
+    return True, f"{jti} is now {status}"
+
+
+def screen_with(geo_id: str, token: str, grant: str | None = None) -> tuple[int, dict[str, Any]]:
+    """Screen a field, with or without presenting a grant.
+
+    The same call either way -- that is the point of the three-way comparison
+    in the notebook. What changes is one header, and what changes in the answer
+    is its *scope*, not whether there is one.
+    """
+    headers = {"Authorization": f"Bearer {token}"}
+    if grant:
+        headers["X-Field-Grant"] = grant
+    try:
+        response = requests.get(f"{TERRAPIPE_OS_URL}/screen/{geo_id}", headers=headers, timeout=120)
+    except requests.RequestException as exc:
+        return 0, {"reason": exc.__class__.__name__}
+    return response.status_code, (response.json() if response.content else {})
+
+
+def show_disclosure(rows: list[tuple[str, int, dict[str, Any]]]) -> None:
+    """The same question at each disclosure tier, side by side."""
+    print(f"{'presented':22} {'HTTP':5} {'scope':14} {'cleared after cut-off':>21}   verdict")
+    for label, status, body in rows:
+        scope = body.get("scope") or "-"
+        fraction = body.get("deforested_fraction")
+        reading = "-" if fraction is None else f"{fraction:.4f}"
+        verdict = body.get("verdict") or body.get("reason") or body.get("detail") or "refused"
+        print(f"{label:22} {status:<5} {scope:14} {reading:>21}   {str(verdict)[:38]}")
+
+
+def trace_back(list_id: str, token: str, grant: str) -> tuple[dict[str, Any], str]:
+    """From a lot, the fields it was drawn from.
+
+    The grant has to be the one scoped to *this* list. AR2 answers an
+    unauthorised request with 404 rather than 403, deliberately: a 403 would
+    confirm the list exists to someone with no right to know that.
+    """
+    try:
+        response = requests.get(
+            f"{NODE_URL}/list-artifact/{list_id}/traceback",
+            headers={"Authorization": f"Bearer {token}", "X-Grant-Token": grant},
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        return {}, f"AR2 could not be reached: {exc.__class__.__name__}"
+    if response.status_code == HTTP_NOT_FOUND:
+        return {}, "AR2 answered 404, which here means the grant does not cover this list"
+    if not response.ok:
+        return {}, f"AR2 answered HTTP {response.status_code}"
+    body = response.json() or {}
+    return body, f"{len(body.get('hops') or [])} hop(s) back from {list_id[:12]}..."
+
+
+def lists_containing(geo_id: str, token: str) -> tuple[list[str], str]:
+    """From a field, the lots it went into.
+
+    The other direction, and the one a recall runs in: this field turned out to
+    be a problem, so what did it end up in.
+    """
+    try:
+        response = requests.get(
+            f"{NODE_URL}/list-artifact/reverse/{geo_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        return [], f"AR2 could not be reached: {exc.__class__.__name__}"
+    if not response.ok:
+        return [], f"AR2 answered HTTP {response.status_code}"
+    ids = (response.json() or {}).get("list_ids") or []
+    return ids, f"{len(ids)} list(s) contain {geo_id[:12]}..."
+
+
+def inclusion_proof(list_id: str, geo_id: str, token: str) -> tuple[list[dict[str, Any]], str]:
+    """Proof that a field is in a list, without revealing the rest of the list."""
+    try:
+        response = requests.get(
+            f"{PANCAKE_URL}/fieldlists/{list_id}/proof/{geo_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        return [], f"Pancake could not be reached: {exc.__class__.__name__}"
+    if not response.ok:
+        return [], f"Pancake answered HTTP {response.status_code}"
+    proof = (response.json() or {}).get("proof") or []
+    return proof, f"{len(proof)} sibling hashes, so a list of {2 ** len(proof)} could be proved this way"
+
+
+HTTP_NOT_FOUND = 404
+
+
+def field_grant(geo_ids: list[str], token: str, *, purpose: str = "open-science demo") -> tuple[str | None, str]:
+    """Just the credential, for the steps that do not need to revoke or trace."""
+    got = consent_for(geo_ids, token, purpose=purpose)
+    return got.credential, got.why
 
 
 def run_async(make_coroutine: Callable[[], Any]) -> Any:

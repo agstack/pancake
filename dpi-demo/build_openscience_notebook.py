@@ -524,14 +524,17 @@ with od.step("Pancake issues a field-access grant") as s:
         # created first and its list_id names the subject. There is no
         # POST /grants -- the notebook asked for one until 2026-09-02 and read
         # the 404 as the grant being unavailable.
-        GRANT, how = od.field_grant(
+        CONSENT = od.consent_for(
             [GEOIDS[f['properties']['name']] for f in FIELDS],
             token=HUB_TOKEN,
             purpose='eudr-screening',
         )
-        print(f"  {'grant issued' if GRANT else 'no grant'}: {how}")
+        GRANT = CONSENT.credential
+        print(f"  {'grant issued' if GRANT else 'no grant'}: {CONSENT.why}")
+        print(f"  list_id     {CONSENT.list_id}")
+        print(f"  credential  {CONSENT.jti}   <- what a revocation names")
         if not GRANT:
-            raise RuntimeError(f"Pancake is up and authenticated but issued no grant: {how}")
+            raise RuntimeError(f"Pancake is up and authenticated but issued no grant: {CONSENT.why}")
     else:
         if not STACK['pancake']['up']:
             why = "Pancake is not up"
@@ -544,6 +547,78 @@ with od.step("Pancake issues a field-access grant") as s:
         print("  The screens that follow read the field's own cover, which is what a")
         print("  grant would have unlocked. In a real deployment the grant is what")
         print("  authorises that, and its absence is why the previous cell was coarse.")
+""")
+
+md("""
+### The same question, three times
+
+One field, one question — *how much of this was cleared after 2020?* — asked
+three times over. Nothing changes between the calls except one HTTP header.
+
+The field is the one that was cleared after the cut-off, so there is a real
+finding to be masked or revealed. Watch the middle column, not the verdict.
+""")
+
+code("""
+SUBJECT_ID = GEOIDS[SUBJECT]
+DISCLOSURE = []
+
+with od.step("the same screen at three disclosure tiers") as s:
+    if NODE_UP and HUB_TOKEN and SUBJECT_ID:
+        DISCLOSURE.append(("nothing", *od.screen_with(SUBJECT_ID, HUB_TOKEN)))
+        if GRANT:
+            DISCLOSURE.append(("a field-access grant", *od.screen_with(SUBJECT_ID, HUB_TOKEN, GRANT)))
+
+            # Withdraw it and ask a third time. A revoked credential is refused
+            # outright rather than quietly downgraded to the coarse answer --
+            # a silent downgrade would make revocation indistinguishable from
+            # never having presented anything.
+            WITHDRAWN, why = od.revoke(CONSENT.jti, HUB_TOKEN)
+            print(f"  revoked: {why}")
+            if WITHDRAWN:
+                DISCLOSURE.append(("the same, now revoked",
+                                   *od.screen_with(SUBJECT_ID, HUB_TOKEN, GRANT)))
+    else:
+        od.skip(s, "the node or the hub is not answering")
+
+if DISCLOSURE:
+    print()
+    od.show_disclosure(DISCLOSURE)
+""")
+
+md("""
+Three things to take from that table.
+
+**The coarse answer is not a worse version of the precise one; it is about a
+different subject.** Without a grant the node answers about the S2 level-10 cell
+the field sits in — some 81 km² against the field's 8.9 hectares. The clearing
+is genuinely there in both, but spread across a neighbourhood it is a fraction
+of a percent, and confined to the field it is over 40%. Neither figure is wrong.
+Only one of them is about a farm.
+
+**Every answer says which scope it used.** A coarse reading can never be mistaken
+for a precise one downstream, because the scope travels with the number.
+
+**Revocation bites, and it bites loudly.** The third row is the same credential
+that worked in the second, presented seconds later. It is refused outright. Had
+the node quietly fallen back to the neighbourhood answer, a withdrawn consent
+would look exactly like a caller who never had one — and the owner would have no
+way to tell whether withdrawing it had done anything.
+
+The grant is reissued below, because the rest of the notebook needs it.
+""")
+
+code("""
+with od.step("reissue the grant that was just revoked") as s:
+    if STACK['pancake']['up'] and HUB_TOKEN and any(GEOIDS.values()):
+        CONSENT = od.consent_for(
+            [GEOIDS[f['properties']['name']] for f in FIELDS],
+            token=HUB_TOKEN, purpose='eudr-screening',
+        )
+        GRANT = CONSENT.credential
+        print(f"  {CONSENT.why}")
+    else:
+        od.skip(s, "there is nothing to reissue against")
 """)
 
 # ==========================================================================
@@ -993,7 +1068,7 @@ with od.step("write the statement to disk") as s:
 """)
 
 # ==========================================================================
-# 11. Publishing
+# 11. Publication
 # ==========================================================================
 
 md("""
@@ -1061,11 +1136,137 @@ with od.step("list the agent-facing tools") as s:
 """)
 
 # ==========================================================================
-# 13. Ledger
+# 13. Trace: a different question entirely
 # ==========================================================================
 
 md("""
-## 13. What this run actually demonstrated
+## 13. A lot, and tracing it both ways
+
+*Everything above answered one question about one field. This section asks a
+different kind of question altogether, and it is here at the end because it
+stands on its own: the same registry and the same credentials, used for supply
+chain traceability rather than for screening. Read it as a second use case, not
+as the conclusion of the first.*
+
+Fields do not ship. Lots do — a container, a delivery, a day's harvest pooled
+from several farms — and the questions that matter are asked of the lot.
+
+A **field list** is that pooling made checkable. It is an ordered set of GeoIDs
+with a `list_id` derived from its members, so the same three fields always
+produce the same list, and a list cannot be edited after the fact without
+becoming a different list. Pancake creates one every time it issues a grant;
+you have already seen its `list_id` above.
+
+Two questions run in opposite directions through it.
+
+**Trace back** — *this container is on the dock; which farms is it from?* That is
+the due-diligence direction, and it is what a customs officer or a buyer asks.
+
+**Trace forward** — *this farm turned out to be a problem; where did its output
+go?* That is the recall direction, and it is the harder one, because it has to
+find every lot a field ever entered rather than reading one list.
+
+Both are ordinary lookups here rather than a document exchange, which is the
+whole argument for a shared identifier: the two parties do not have to agree on
+a format, only on which field they are talking about.
+""")
+
+code("""
+LOT, LOT_CONSENT = None, None
+MEMBERS = ['compliant_coffee', 'legacy_clearing', 'post_cutoff_clearing']
+
+with od.step("pool three fields into a lot") as s:
+    if STACK['pancake']['up'] and HUB_TOKEN and all(GEOIDS.get(m) for m in MEMBERS):
+        LOT_CONSENT = od.consent_for(
+            [GEOIDS[m] for m in MEMBERS], token=HUB_TOKEN,
+            purpose='trace demonstration', name='container HNCF-2026-09',
+        )
+        LOT = LOT_CONSENT.list_id
+        print(f"  list_id  {LOT}")
+        print(f"  members  {len(MEMBERS)} fields, one of which was cleared after the cut-off")
+    else:
+        od.skip(s, "Pancake is not answering, or no GeoIDs were minted")
+""")
+
+md("""
+### Trace back: from the container to the farms
+""")
+
+code("""
+with od.step("trace back from the lot to its fields") as s:
+    if LOT and LOT_CONSENT and LOT_CONSENT.credential:
+        BACK, why = od.trace_back(LOT, HUB_TOKEN, LOT_CONSENT.credential)
+        print(f"  {why}")
+        NAME_OF = {v: k for k, v in GEOIDS.items() if v}
+        for hop in BACK.get('hops', []):
+            print(f"\\n  depth {hop['depth']}  {len(hop.get('geoids') or [])} members")
+            for geoid in hop.get('geoids') or []:
+                print(f"      {geoid[:16]}...  {NAME_OF.get(geoid, 'a field not in this demo')}")
+    else:
+        od.skip(s, "there is no lot to trace back from")
+""")
+
+md("""
+That request carried the grant scoped to *this* list. Without it AR2 answers
+**404**, not 403 — deliberately, because a 403 would confirm to a stranger that
+the list exists. Trace is not a public index; it is a private one that the
+holder of a credential can walk.
+""")
+
+md("""
+### Trace forward: from the farm to the containers
+""")
+
+code("""
+with od.step("trace forward from a field to the lots it entered") as s:
+    if GEOIDS.get('post_cutoff_clearing') and HUB_TOKEN:
+        SUSPECT = GEOIDS['post_cutoff_clearing']
+        LOTS, why = od.lists_containing(SUSPECT, HUB_TOKEN)
+        print(f"  the field screened at {DISCLOSURE[1][2].get('deforested_fraction', 0):.1%} cleared "
+              f"after the cut-off" if len(DISCLOSURE) > 1 else "  the field cleared after the cut-off")
+        print(f"  {why}\\n")
+        for list_id in LOTS:
+            mark = '  <- the container above' if list_id == LOT else ''
+            print(f"      {list_id[:16]}...{mark}")
+    else:
+        od.skip(s, "no GeoID was minted for the suspect field")
+""")
+
+md("""
+That is a recall in three lines. The field is the one that failed its screen;
+every lot listed is a consignment that would have to be held, and each of those
+`list_id`s can be traced back in turn to find the other farms in it.
+
+Nothing here required the farms, the exporter and the buyer to share a database
+— only to have registered the same boundaries and got the same GeoIDs, which is
+what makes the identifier worth having.
+
+### Proving membership without revealing the list
+
+A buyer may need to show a regulator that a particular field was in a particular
+lot, without disclosing the other farms in it. The list is a Merkle tree, so
+that is an inclusion proof: a handful of sibling hashes that recompute the
+`list_id` and say nothing about anyone else.
+""")
+
+code("""
+with od.step("prove one field is in the lot, without revealing the others") as s:
+    if LOT and GEOIDS.get('compliant_coffee'):
+        PROOF, why = od.inclusion_proof(LOT, GEOIDS['compliant_coffee'], HUB_TOKEN)
+        print(f"  {why}\\n")
+        for sibling in PROOF:
+            print(f"      {sibling['position']:6} {sibling['sibling'][:32]}...")
+        print(f"\\n  These recompute {LOT[:16]}... and disclose no other member.")
+    else:
+        od.skip(s, "there is no lot to prove membership in")
+""")
+
+# ==========================================================================
+# 14. Ledger
+# ==========================================================================
+
+md("""
+## 14. What this run actually demonstrated
 
 Generated from the steps above rather than written by hand. A hand-written
 summary of a notebook is a claim about some previous run; this one cannot

@@ -767,6 +767,23 @@ def _legend_of(canvas) -> str:
     return " ".join(re.findall(r'class="legend-label">([^<]*)</span>', drawn))
 
 
+def _body_of(name: str) -> str:
+    """The source of one top-level function in the support module.
+
+    Slicing between two hand-picked strings looked fine and was not: the second
+    anchor for inclusion_proof also appeared earlier in the file, so the slice
+    came back empty and the assertions in it all passed against nothing. A check
+    that cannot fail is indistinguishable from a passing one.
+    """
+    source = pathlib.Path(_module().__file__).read_text()
+    start = source.index(f"def {name}(")
+    rest = source[start:]
+    following = re.search(r"\n(?:def |class |@dataclass\n)", rest)
+    body = rest[: following.start()] if following else rest
+    assert body.strip(), f"no body found for {name}"
+    return body
+
+
 def _rendered(canvas) -> str:
     import html as html_module
 
@@ -1187,10 +1204,7 @@ def test_the_catalogue_describes_the_layers_the_demo_actually_leans_on() -> None
 
 def test_the_catalogue_is_asked_of_the_node_not_written_down() -> None:
     """A hardcoded list is a list that is wrong the first time a layer is added."""
-    od = _module()
-    source = pathlib.Path(od.__file__).read_text()
-
-    body = source[source.index("def library("):source.index("def show_library(")]
+    body = _body_of("library")
     assert "/layers" in body and "requests.get" in body, (
         "the catalogue does not come from the node"
     )
@@ -1207,9 +1221,7 @@ def test_the_catalogue_needs_no_token_and_no_geoid() -> None:
     out what could be learned about one. If listing the library started
     requiring a grant, the section's argument would be false.
     """
-    od = _module()
-    source = pathlib.Path(od.__file__).read_text()
-    body = source[source.index("def library("):source.index("def show_library(")]
+    body = _body_of("library")
 
     assert "Authorization" not in body, "listing the library asks for a token"
     assert "grant" not in body.lower(), "listing the library asks for a grant"
@@ -1236,11 +1248,152 @@ def test_the_catalogue_does_not_repeat_the_nodes_broken_mirrored_flag() -> None:
     with real data. Showing that to a reader would tell them the library is
     empty when it is not.
     """
-    od = _module()
-    source = pathlib.Path(od.__file__).read_text()
-    body = source[source.index("def show_library("):source.index("def _absent_layers(")]
+    body = _body_of("show_library")
 
     assert "mirrored" not in body, (
         "the catalogue prints the node's mirrored flag, which is wrong on any "
         "node running a build from before the fix"
+    )
+
+
+# --------------------------------------------------------------------------
+# Consent, shown rather than described
+# --------------------------------------------------------------------------
+
+
+def test_the_disclosure_table_shows_the_scope_beside_every_reading() -> None:
+    """A number without its scope is the confusion the whole tier exists to stop.
+
+    0.0116 and 0.4170 are the same clearing measured over 81 km² and over 8.9
+    hectares. Printed without saying which, the coarse one reads as a clean
+    field.
+    """
+    od = _module()
+
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        od.show_disclosure([
+            ("nothing", 200, {"scope": "neighbourhood", "deforested_fraction": 0.0116,
+                              "verdict": "deforestation_detected"}),
+            ("a field-access grant", 200, {"scope": "field", "deforested_fraction": 0.4170,
+                                           "verdict": "deforestation_detected"}),
+            ("the same, now revoked", 403, {"reason": "grant_refused"}),
+        ])
+    shown = printed.getvalue()
+
+    assert "neighbourhood" in shown and "field" in shown
+    assert "0.0116" in shown and "0.4170" in shown
+    for line in shown.splitlines()[1:]:
+        if "0.0116" in line:
+            assert "neighbourhood" in line, "a reading is printed away from its scope"
+
+
+def test_a_revoked_grant_is_refused_rather_than_quietly_downgraded() -> None:
+    """Silent fallback would make withdrawal indistinguishable from never granting.
+
+    Confirmed against the deployment on 2026-09-06: the same credential that
+    answered at field scope is refused 403 seconds after revocation, rather than
+    dropping back to the neighbourhood answer.
+    """
+    od = _module()
+
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        od.show_disclosure([("the same, now revoked", 403, {"reason": "grant_refused"})])
+    shown = printed.getvalue()
+
+    assert "403" in shown
+    assert "neighbourhood" not in shown, "a refusal is being shown as a coarse answer"
+
+
+def test_the_notebook_asks_the_same_question_at_every_tier() -> None:
+    """The comparison is only worth anything if nothing else changed."""
+    body = _body_of("screen_with")
+
+    assert body.count("requests.get") == 1, "the tiers are served by different calls"
+    assert "X-Field-Grant" in body
+    # The grant is the only difference between the calls.
+    assert body.count("/screen/") == 1
+
+
+def test_revocation_names_the_credential_not_the_list() -> None:
+    """Revoking by list would withdraw every grant ever issued over those fields."""
+    body = _body_of("revoke")
+
+    assert "jti" in body, "revocation does not name a credential"
+    assert "list_id" not in body, "revocation is scoped to a list, not a credential"
+
+
+def test_a_grant_carries_the_handles_needed_to_withdraw_and_to_trace() -> None:
+    """field_grant returns only a credential, which cannot be revoked or traced with."""
+    od = _module()
+
+    assert {"credential", "list_id", "jti", "why"} <= set(od.Consent.__dataclass_fields__)
+
+
+# --------------------------------------------------------------------------
+# Trace, as its own use case
+# --------------------------------------------------------------------------
+
+
+def test_trace_runs_in_both_directions_from_different_starting_points() -> None:
+    """Back from a lot to its fields; forward from a field to its lots.
+
+    Two different endpoints, because they are two different questions. Trace
+    back reads one list. Trace forward has to find every list a field entered,
+    which is the direction a recall runs in.
+    """
+    back = _body_of("trace_back")
+    forward = _body_of("lists_containing")
+
+    assert "/traceback" in back and "list_id" in back
+    assert "/reverse/" in forward and "geo_id" in forward
+
+
+def test_tracing_back_needs_the_grant_for_that_list() -> None:
+    """AR2 answers an unauthorised trace with 404, and the helper must say why.
+
+    A 403 would confirm the list exists to someone with no right to know it, so
+    AR2 masks the authorisation failure as absence. Read naively that reports a
+    missing lot, which is a different and much more alarming thing.
+    """
+    back = _body_of("trace_back")
+
+    assert "X-Grant-Token" in back, "trace back presents no grant"
+    assert "HTTP_NOT_FOUND" in back or "404" in back, "the masked refusal is not handled"
+    assert "grant does not cover" in back, (
+        "a 404 is passed through as absence rather than as the refusal it is"
+    )
+
+
+def test_trace_is_the_last_section_because_it_is_a_different_question() -> None:
+    """Everything before it screens one field. This asks about a consignment."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    trace = built.index("## 13. A lot, and tracing it both ways")
+    ledger = built.index("## 14. What this run actually demonstrated")
+    verdicts = built.index("## 6. The four verdicts")
+    dds = built.index("## 10. Out to the regulator")
+
+    assert verdicts < trace and dds < trace, "trace interrupts the screening narrative"
+    assert trace < ledger, "the ledger must come last; it summarises the run"
+
+
+def test_the_sections_are_numbered_without_a_gap() -> None:
+    """A renumber that skips one is the sort of thing nobody notices in review."""
+    built = (DEMO / "build_openscience_notebook.py").read_text()
+
+    numbers = [int(n) for n in re.findall(r'^## (\d+)\. ', built, re.M)]
+
+    assert numbers == sorted(numbers), f"sections are out of order: {numbers}"
+    assert numbers == list(range(len(numbers))), f"a section number is missing: {numbers}"
+
+
+def test_an_inclusion_proof_reveals_no_other_member() -> None:
+    """The point of proving membership with a Merkle path rather than the list."""
+    body = _body_of("inclusion_proof")
+
+    assert "/proof/" in body
+    assert "geoids" not in body and "members" not in body, (
+        "the proof helper reads the list's membership, which defeats the purpose"
     )
