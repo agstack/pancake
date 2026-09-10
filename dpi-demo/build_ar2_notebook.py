@@ -156,9 +156,12 @@ if (Path(AR2_SOURCE) / "app" / "geoid_v2.py").exists():
     sys.path.insert(0, AR2_SOURCE)
 
 import ar2_demo as ar
+import honduras_fields as hf
 importlib.reload(ar)   # a stale kernel is the commonest confusion here
+importlib.reload(hf)
 
 print(f"support module: {ar.__file__}")
+print(f"survey        : {hf.directory() or 'not present -- section 5 will say so'}")
 print(f"AR2 source    : {AR2_SOURCE if 'app.geoid_v2' in sys.modules or (Path(AR2_SOURCE) / 'app' / 'geoid_v2.py').exists() else 'not found -- section 3 will say so'}")
 """)
 
@@ -393,11 +396,164 @@ housekeeping — it is the reason a trace can be trusted at all.
 """)
 
 # ==========================================================================
-# 5. Disclosure
+# 5. The same thing, in a real survey
 # ==========================================================================
 
 md("""
-## 5. Knowing the name grants nothing
+## 5. The same argument, without anything invented
+
+Everything above this line was made up by us. The Dutch parcels are real, but
+the four redrawings are ours — we moved the vertices, so of course they behave
+as we said they would. A reviewer is entitled to discount the whole section on
+that basis.
+
+This section uses a **cooperative's own plot survey from Honduras**: sixteen
+KML files, walked with phones by the people who farm the plots. Nobody produced
+them for this notebook and nobody cleaned them up.
+
+**They are not in this repository and will not be.** Each file is named for a
+farmer and their national identity number, and the boundary itself is exactly
+the personal data section 6 is about protecting. The loader reads them
+from a directory outside the tree, returns geometry and a plot code, and
+refuses a plot label that looks like an identity number — one of them is. If
+the survey is not on this machine the section says so and the notebook carries
+on.
+""")
+
+code("""
+SURVEY = hf.load()
+if SURVEY:
+    hf.show(SURVEY)
+else:
+    print(f"  {hf.describe(SURVEY)}")
+""")
+
+md("""
+### What arrived
+
+Three things in that table are worth more than the four redrawings above,
+because none of them were arranged.
+
+**Two rows are one piece of ground.** Two files, two farmers, two national
+identity numbers — and byte-identical vertex lists. This is the duplicate case
+occurring by itself in a sixteen-file survey. Under AR 1.x's bounding-box rule
+one of those two farmers is refused as a duplicate; under Open Foris's 2026
+UUIDs they get two unrelated names for one plot.
+
+**Two traces cross themselves.** Walked badly, closed wrong, and a naming
+scheme has to do something defensible with them rather than reject them.
+
+**They are very small.** A tenth of a hectare is a thirty-metre square, about
+one Hansen pixel. The synthetic fields elsewhere in these notebooks are eight
+hectares, which is a far easier case than the one that actually exists.
+""")
+
+code("""
+NAMES = {}
+with ar.step("name every distinct boundary in the survey") as s:
+    if not SURVEY:
+        ar.skip(s, "the survey is not on this machine")
+    else:
+        for plot in SURVEY:
+            NAMES[plot.label] = ar.name_of([list(p) for p in plot.ring], HUB_TOKEN)
+
+if NAMES:
+    print()
+    print(f"  {'plot':24} {'ha':>5}  {'geo id':24} note")
+    for plot in SURVEY:
+        got = NAMES[plot.label]
+        note = "trace crosses itself" if plot.self_intersecting else ""
+        if plot.duplicate_of:
+            note = f"same ground as {plot.duplicate_of}"
+        print(f"  {plot.label:24} {plot.hectares:5.2f}  "
+              f"{(got.geo_id or 'refused: ' + got.message)[:24]:24} {note}")
+""")
+
+md("""
+### The two farmers
+
+The claim is not that the table above looks tidy. It is that the two rows
+sharing a boundary got the **same name**, and that the name was not consulted
+to decide it — it fell out of the geometry both times.
+""")
+
+code("""
+with ar.step("compare the names given to the boundary that appears twice") as s:
+    pairs = hf.duplicates(SURVEY) if SURVEY else []
+    if not pairs:
+        ar.skip(s, "no duplicated boundary in this survey")
+    else:
+        second, first_label = pairs[0]
+        first, again = NAMES.get(first_label), NAMES.get(second.label)
+        print(f"  first registration   {first_label:24} {str(first.geo_id)[:32]}")
+        print(f"  second registration  {second.label:24} {str(again.geo_id)[:32]}")
+        print()
+        if first.geo_id and first.geo_id == again.geo_id:
+            print("  One name. Two farmer records, two national identity numbers, one")
+            print("  piece of ground -- and the hub resolved it without being told they")
+            print("  were the same plot, because the name is computed from the boundary.")
+            print()
+            print(f"  The node's own words the second time: {again.message[:72]!r}")
+            print(f"  Read as a new registration: {again.is_new}. Read as a resolution to")
+            print(f"  a field already known: {again.resolved}.")
+            print()
+            print("  Note what it did *not* do: it did not refuse the second farmer. Both")
+            print("  claims stand against one field, which is the situation on the ground")
+            print("  and is a question for the cooperative, not for the naming scheme.")
+        elif first.geo_id and again.geo_id:
+            print("  Two names for one boundary. That is a defect in the derivation and")
+            print("  this step exists to catch it.")
+        else:
+            print("  One of the two was refused, which is the AR 1.x behaviour this")
+            print("  scheme is supposed to have fixed.")
+""")
+
+md("""
+### The traces that cross themselves
+""")
+
+code("""
+with ar.step("check the malformed traces were named rather than rejected") as s:
+    broken = [p for p in SURVEY if p.self_intersecting] if SURVEY else []
+    if not broken:
+        ar.skip(s, "no self-intersecting traces in this survey")
+    else:
+        for plot in broken:
+            got = NAMES[plot.label]
+            verdict = "named" if got.geo_id else f"refused ({got.status})"
+            print(f"  {plot.label:24} {len(plot.ring):3} vertices, crosses itself  -> {verdict}")
+        print()
+        if all(NAMES[p.label].geo_id for p in broken):
+            print("  Both named. The derivation repairs the ring before it covers it, so")
+            print("  a trace walked badly still gets a stable name instead of an error")
+            print("  message the farmer cannot act on.")
+            print()
+            print("  This is worth stating carefully: repairing a self-intersection is a")
+            print("  *choice about the geometry*, and two repairs of the same bad ring")
+            print("  must agree or the name is not stable. That the same file names the")
+            print("  same way twice is shown above; that any two implementations of the")
+            print("  repair agree is not demonstrated here.")
+        else:
+            print("  At least one was refused. A survey that cannot name its own worst")
+            print("  traces pushes the cleanup onto whoever collected them.")
+""")
+
+md("""
+### The map the cooperative would recognise
+
+Drawn only if the survey is present, and only ever on this machine.
+""")
+
+code("""
+ar.parcel_map([p.feature for p in hf.distinct(SURVEY)]) if SURVEY else None
+""")
+
+# ==========================================================================
+# 6. Disclosure
+# ==========================================================================
+
+md("""
+## 6. Knowing the name grants nothing
 
 A GeoID is safe to print on a shipping container. What it resolves to is decided
 per caller, per query.
@@ -514,7 +670,7 @@ with ar.step("revoke the slip and present the very same one again") as s:
 # ==========================================================================
 
 md("""
-## 6. One hub, many countries
+## 7. One hub, many countries
 
 The hub resolves the country from the coordinates and routes to that country's
 node, so data stays in-country. Below, a Dutch parcel and a Honduran field are
@@ -551,7 +707,7 @@ with ar.step("register in two countries through the same hub") as s:
 # ==========================================================================
 
 md("""
-## 7. What this run actually demonstrated
+## 8. What this run actually demonstrated
 
 Generated from the steps above rather than written by hand, and it cannot
 disagree with the cells it follows. Read the skipped lines as the honest to-do

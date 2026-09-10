@@ -323,7 +323,7 @@ def test_the_notebook_does_not_claim_sovereignty_from_one_node() -> None:
     exists to make checkable.
     """
     built = BUILDER.read_text()
-    section = built[built.index("## 6. One hub, many countries"):]
+    section = built[built.index("## 7. One hub, many countries"):]
 
     assert "one node" in section.lower(), "the single-node caveat is gone"
     assert "sovereignty is not" in section or "not shown by this run" in section

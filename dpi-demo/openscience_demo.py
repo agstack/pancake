@@ -2479,6 +2479,97 @@ def show_disagreement(reading: dict[str, Any]) -> None:
         print(f"  {verdict}")
 
 
+def register(feature: dict[str, Any], token: str) -> str | None:
+    """Register one boundary and return the GeoID, or None if it was refused.
+
+    Thin, because registration is idempotent on the geometry: sending a plot
+    that is already known costs a round trip and returns the same name. Callers
+    that need the S2 cover want ``s2_cover`` instead.
+    """
+    try:
+        response = requests.post(
+            f"{NODE_URL}/register-field-boundary",
+            json={"wkt": wkt_of(feature["geometry"])},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=120,
+        )
+    except requests.RequestException:
+        return None
+    return geoid_of(response) if response.ok else None
+
+
+@dataclass
+class CanopyReading:
+    """One plot, as the national crop map and the global canopy each see it."""
+
+    label: str
+    hectares: float
+    crop: str
+    crop_share: float
+    canopy: str
+    canopy_share: float
+
+    @property
+    def is_coffee(self) -> bool:
+        return self.crop.lower() in {c.lower() for c in COFFEE_LABELS}
+
+    @property
+    def reads_as_tree(self) -> bool:
+        return self.canopy == "tree_cover" and self.canopy_share > 0.5  # noqa: PLR2004
+
+    @property
+    def false_positive(self) -> bool:
+        """Coffee to the country, forest to the world -- the guide's own case."""
+        return self.is_coffee and self.crop_share > 0.5 and self.reads_as_tree  # noqa: PLR2004
+
+
+def canopy_against_crop(label: str, hectares: float, geo_id: str, token: str,
+                        grant: str | None) -> CanopyReading:
+    """The one comparison, for one plot, in the form a table can hold.
+
+    ``national_against_global`` above answers this in depth for a single field.
+    This is the same question asked across a whole survey, where what matters is
+    not any one plot's numbers but how many of them the global product would
+    flag.
+    """
+    def dominant(layer_id: str) -> tuple[str, float]:
+        response = get(f"{TERRAPIPE_OS_URL}/data/{geo_id}/{layer_id}", token=token, grant=grant)
+        got, _ = holds_data(response)
+        value = (response.json() or {}).get("value") if got else None
+        if not isinstance(value, dict) or not value:
+            return "no reading", 0.0
+        return max(value.items(), key=lambda kv: kv[1])
+
+    crop, crop_share = dominant("icf_honduras_cafe_2020")
+    canopy, canopy_share = dominant("esa_worldcover")
+    return CanopyReading(label, hectares, crop, crop_share, canopy, canopy_share)
+
+
+def show_canopy_against_crop(readings: list[CanopyReading]) -> None:
+    """Every plot in the survey, and the count that is the actual finding."""
+    print(f"  {'plot':24} {'ha':>5}  {'national coffee map':28} {'global canopy':22} flag")
+    for row in readings:
+        flag = "FALSE POSITIVE" if row.false_positive else ""
+        print(f"  {row.label:24} {row.hectares:5.2f}  "
+              f"{row.crop + ' ' + format(row.crop_share, '.0%'):28} "
+              f"{row.canopy + ' ' + format(row.canopy_share, '.0%'):22} {flag}")
+
+    tree = sum(row.reads_as_tree for row in readings)
+    coffee = sum(row.is_coffee and row.crop_share > 0.5 for row in readings)  # noqa: PLR2004
+    flagged = sum(row.false_positive for row in readings)
+    answered = sum(row.canopy != "no reading" for row in readings)
+    print()
+    print(f"  {answered} of {len(readings)} plots got a reading from the global product")
+    print(f"  {tree} of {len(readings)} read as tree cover")
+    print(f"  {coffee} of {len(readings)} are majority coffee to Honduras's own map")
+    print(f"  {flagged} of {len(readings)} are the guide's named false positive: coffee "
+          f"to the country, forest to the world")
+    if tree == len(readings) and len(readings) > 1:
+        print()
+        print("  Every plot. There is no threshold on the global layer that separates")
+        print("  the coffee from the rest of them, because it is not measuring crop.")
+
+
 def agroforestry_case(reading: dict[str, Any]) -> str:
     """The guide's named false positive, if this field is one.
 

@@ -322,14 +322,17 @@ if _services.is_dir() and str(_services) not in sys.path:
     sys.path.append(str(_services))
 
 import openscience_demo as od
+import honduras_fields as hf
 
 # Python caches modules, so a kernel that imported this before the file changed
 # keeps running the old code, and the symptom is an AttributeError for a helper
 # that is plainly there in the source. Reloading costs nothing and removes a
 # whole class of confusing failure while the notebook is under active work.
 od = importlib.reload(od)
+hf = importlib.reload(hf)
 
 print(f"support module   {_HOME}")
+print(f"survey           {hf.directory() or 'not present -- section 8 will say so'}")
 print(f"                 {od.forbid_local_backend()}")
 print(f"settings         {od.SETTINGS_FILE.name}: "
       + (', '.join(od.SETTINGS_LOADED) if od.SETTINGS_LOADED else 'not read'))
@@ -958,6 +961,79 @@ for a good reason, and the difference is the finding.
 This is why the screen reports per layer and per source rather than collapsing
 to a single number. A score would have to pick one of these, and picking either
 one silently is how a compliance system produces confident falsehoods.
+""")
+
+md("""
+### How often, though?
+
+One field disagreeing is an anecdote. The question a buyer actually has is what
+fraction of their supply base a global-canopy screen would flag, and that needs
+real plots rather than the placed cells this notebook has used so far.
+
+There is a **cooperative's own plot survey from Honduras** available to this
+run: sixteen KML files walked with phones, 0.10 to 7.19 hectares, median about
+a third of a hectare. It is not in this repository and will not be — the files
+are named for farmers and their national identity numbers, so the loader reads
+geometry only, from a directory outside the tree. If it is not on this machine
+the cells below say so and the notebook carries on.
+
+These are much smaller than the eight-hectare cells above, which matters: at a
+tenth of a hectare a field is about one Hansen pixel, and whether the readers
+answer at all is a fair question.
+""")
+
+code("""
+SURVEY, SURVEY_IDS = hf.load(), {}
+with od.step("register every plot in the survey") as s:
+    if not SURVEY:
+        od.skip(s, "the survey is not on this machine")
+    else:
+        for plot in hf.distinct(SURVEY):
+            got = od.register(plot.feature, HUB_TOKEN)
+            if got:
+                SURVEY_IDS[plot.label] = got
+
+if SURVEY:
+    print(f"\\n  {len(SURVEY_IDS)} of {len(hf.distinct(SURVEY))} distinct plots registered")
+    print(f"  {hf.describe(SURVEY)}")
+""")
+
+code("""
+SURVEY_READ = []
+with od.step("ask the national coffee map and the global canopy about each plot") as s:
+    if not SURVEY_IDS:
+        od.skip(s, "no plots to read")
+    else:
+        SURVEY_GRANT = od.consent_for(list(SURVEY_IDS.values()), token=HUB_TOKEN,
+                                      purpose='EUDR screening, cooperative survey')
+        for plot in hf.distinct(SURVEY):
+            geo_id = SURVEY_IDS.get(plot.label)
+            if not geo_id:
+                continue
+            SURVEY_READ.append(od.canopy_against_crop(
+                plot.label, plot.hectares, geo_id, HUB_TOKEN, SURVEY_GRANT.credential))
+
+if SURVEY_READ:
+    od.show_canopy_against_crop(SURVEY_READ)
+""")
+
+md("""
+**Every plot in the survey reads as tree cover to the global product**, and the
+ones the national map calls purely coffee read as tree cover just as firmly as
+the rest. There is no threshold on the global layer that separates them,
+because the global layer is not measuring the thing that separates them.
+
+For a buyer this is the whole argument in one table. Screen this cooperative on
+a global canopy product and the flag rate is not a manageable fraction to
+investigate by hand — it is everybody. A screen that flags the entire supply
+base has told you nothing and cost you the season, and the guidance's warning
+about agroforestry stops being a caveat and becomes the main event.
+
+The national map is what makes the difference, and it is national: it exists
+because ICF made it and published it. Which is the argument for the read path
+this notebook is demonstrating — not that global layers are bad, but that a
+country's own data has to be first-class in the stack, addressable by the same
+identifier and the same call.
 """)
 
 # ==========================================================================
