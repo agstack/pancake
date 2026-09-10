@@ -592,7 +592,7 @@ tap-cli subscribe planet-field-abc
 
 **For vendors wanting to integrate with TAP**:
 
-1. **Read the guide**: See [TAP_VENDOR_GUIDE.md](TAP_VENDOR_GUIDE.md)
+1. **Read the guide**: See [TAP_VENDOR_GUIDE.md](../docs/TAP_VENDOR_GUIDE.md)
 2. **Implement adapter**: ~100-300 lines, inherit from `TAPAdapter`
 3. **Add config**: Single YAML block
 4. **Test**: Use provided test framework

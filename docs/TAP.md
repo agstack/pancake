@@ -1145,7 +1145,7 @@ pancake.store([ndvi_bite, soil_bite, weather_bite])
 
 ### Demo and Testing
 
-- **[POC_Nov20_BITE_PANCAKE.ipynb](POC_Nov20_BITE_PANCAKE.ipynb)**: Part 12 - Multi-vendor TAP demo with live API calls
+- **[POC_Nov20_BITE_PANCAKE.ipynb](../implementation/POC_Nov20_BITE_PANCAKE.ipynb)**: Part 12 - Multi-vendor TAP demo with live API calls
 - **`tests/test_tap_adapters.py`**: Unit and integration tests for adapters
 
 ---

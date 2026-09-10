@@ -310,13 +310,13 @@ bite = factory.get_adapter('my_vendor').fetch_and_transform(
 ## Community Engagement
 
 **For Vendors:**
-- Read: [TAP_VENDOR_GUIDE.md](TAP_VENDOR_GUIDE.md)
+- Read: [TAP_VENDOR_GUIDE.md](../docs/TAP_VENDOR_GUIDE.md)
 - Contact: pancake-support@agstack.org
 - Submit: PR to https://github.com/agstack/pancake
 
 **For Users:**
-- Demo: [POC_Nov20_BITE_PANCAKE.ipynb](POC_Nov20_BITE_PANCAKE.ipynb) Part 12
-- Docs: [TAP.md](TAP.md), [SIRUP.md](SIRUP.md), [BITE.md](BITE.md)
+- Demo: [POC_Nov20_BITE_PANCAKE.ipynb](../implementation/POC_Nov20_BITE_PANCAKE.ipynb) Part 12
+- Docs: [TAP.md](../docs/TAP.md), [SIRUP.md](../docs/SIRUP.md), [BITE.md](../docs/BITE.md)
 - Support: AgStack Slack #pancake channel
 
 **For Contributors:**
