@@ -64,3 +64,10 @@ pancake_dev.db
 
 # Names a deployment and can hold a token.
 dpi-demo/demo.env
+
+# Surveyed smallholder boundaries. Real plots, and the files are named for the
+# farmer and their national identity number. honduras_fields.py reads them from
+# outside the tree via HONDURAS_FIELDS_DIR and returns geometry only; nothing
+# here should ever hold a copy.
+dpi-demo/fieldboundaries/
+*.kml
