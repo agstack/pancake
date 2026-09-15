@@ -49,11 +49,12 @@ def create_app(
         """Echo the authenticated hub identity (auth smoke check)."""
         return {"hub_account_id": user.hub_account_id, "email": user.email}
 
-    from pancake_services.grants.routers import audit, bites, fieldlists, grants  # noqa: PLC0415
+    from pancake_services.grants.routers import audit, bites, fieldlists, grants, guarantees  # noqa: PLC0415
 
     app.include_router(fieldlists.router)
     app.include_router(grants.router)
     app.include_router(audit.router)
     app.include_router(bites.router)
+    app.include_router(guarantees.router)
 
     return app

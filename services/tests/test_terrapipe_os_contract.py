@@ -244,7 +244,12 @@ def test_the_node_answers_the_connectors_own_client(node):
     health = made.client.health()
     layer_ids = {layer["layer_id"] for layer in made.client.layers()}
 
-    assert health["status"] == "ok"
+    # Since terrapipe-os e9122a7 /health reports "degraded" when a declared
+    # store root is not visible, and names it. This test node mounts a share
+    # with a few synthetic stores, so most of the library is missing by design;
+    # what the connector needs is that the node answers and says what it has.
+    assert health["status"] in {"ok", "degraded"}
+    assert "stores" in health and "stores_missing" in health
     assert {"jrc_tmf_deforestation_year", "ndvi_sentinel2", "gfs_forecast"} <= layer_ids
 
 

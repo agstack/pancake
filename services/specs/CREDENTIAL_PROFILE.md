@@ -127,3 +127,62 @@ A relying party MUST reject a presentation when any of the following holds:
 | 3 | `revoked.sdjwt` | reject (rule 4) |
 | 4 | `tampered.sdjwt` | reject (rule 1) |
 | 5 | `wrong_geoid.sdjwt` | reject (rule 5/6: disclosed GeoID not in `_sd` / proof fails) |
+
+---
+
+# AgStack Green Guarantee — Credential Profile
+
+*Added 2026-09-15. Implemented in `pancake_services/grants/routers/guarantees.py`; tested in `tests/test_green_guarantee.py`.*
+
+## 8. What this credential says
+
+A guarantor (Confianza, or any accredited issuer) promises a lender that, should the borrower default, it covers a stated share of a stated amount on a stated credit request, and that the promise was made on a named risk class reached under a named rule set from named evidence. The subject is a plot (GeoID) or a cooperative batch (ListID) — **never a geometry**. The lender verifies the guarantee without asking the issuer; the issuer revokes it publicly; every step of its life is in the MEAL for the subject.
+
+It is the same SD-JWT VC machinery as the field-access grant, with a different `vct`, so a verifier built for one refuses the other (`sdjwt.verify(..., expected_vct=...)`).
+
+## 9. Claims
+
+| Claim | Required | Meaning |
+|---|---|---|
+| `iss` | yes | Issuer identifier, as for grants |
+| `sub` | yes | The **GeoID** or **ListID** (64 hex) the guarantee stands behind |
+| `subject_kind` | yes | `"geoid"` or `"fieldlist"` |
+| `iat`, `exp`, `jti` | yes | As for grants. **Every guarantee expires.** `jti` is the revocation handle and the supersession handle |
+| `vct` | yes | `agstack.org/credentials/green-guarantee/v1` |
+| `beneficiary` | yes | Hub account id of the lender |
+| `guarantee.request_ref` | yes | The credit request this backs (issuer's reference) |
+| `guarantee.amount`, `guarantee.currency` | yes | Loan principal guaranteed against; ISO 4217 code |
+| `guarantee.coverage_ratio` | yes | Share of the amount covered, in (0, 1] |
+| `guarantee.state` | yes | `"PRE_APPROVED"` or `"ISSUED"` |
+| `guarantee.supersedes` | no | `jti` of the credential this one replaces (PRE_APPROVED → ISSUED). The superseded credential is revoked in the same transaction |
+| `risk.risk_class` | yes | `"low"`, `"high"` or `"more_info_needed"` — the screen's three-valued class |
+| `risk.rule_set_version` | yes | The `rule_set.version` string of the screen the class was read from (e.g. `eudr-perennial-crop/2026.09.15`) |
+| `risk.evidence` | yes (may be empty) | BITE ids of the screen record(s) the decision rests on |
+| `odrl` | yes | ODRL 2.2 `Agreement`: permission `use` by the beneficiary for purpose `credit-guarantee` on event `request_ref` until `exp`; prohibition `distribute` |
+| `status` | yes | StatusList2021 reference, shared bitstring with grants |
+
+No claim is selectively disclosable: a guarantee is shown whole or not at all.
+
+## 10. State machine
+
+```
+            issue(state=PRE_APPROVED)              issue(state=ISSUED, supersedes=jti₁)
+  (none) ───────────────────────────► PRE_APPROVED ─────────────────────────────────► ISSUED
+                                          │                                              │
+                                          │ revoke(reason)                               │ revoke(reason)
+                                          ▼                                              ▼
+                                       REVOKED                                        REVOKED
+```
+
+- `issue(state=ISSUED)` without `supersedes` is permitted (a single-step life).
+- `supersedes` must name this issuer's active credential for the **same** `request_ref` and `sub`; otherwise `409`.
+- ISSUED → PRE_APPROVED is refused (`409`).
+- At any moment exactly one active guarantee stands for a request.
+
+## 11. MEAL events
+
+Written to the MEAL keyed by `sub`, `meal_type = guarantee_lifecycle`: `guarantee.pre_approved`, `guarantee.issued`, `guarantee.retrieved` (each lender retrieval), `guarantee.revoked` (with `reason`; a supersession writes one with reason `superseded by <jti>`).
+
+## 12. Verifier rules
+
+Rules 1–4 of §6 apply unchanged (signature, expiry, issuer, status bit). Rule 5 becomes: `vct` **must** equal `agstack.org/credentials/green-guarantee/v1`. There are no disclosures to check.

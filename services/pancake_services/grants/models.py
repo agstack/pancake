@@ -11,6 +11,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -74,6 +75,41 @@ class Grant(Base):
     credential: Mapped[str] = mapped_column(Text)  # SD-JWT compact serialization
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Guarantee(Base):
+    """A Green Guarantee credential: a lender-facing promise over a GeoID or ListID.
+
+    Metadata only, like ``Grant``; the signed SD-JWT is the record. The subject
+    is the plot (GeoID) or the cooperative batch (ListID) the guarantee stands
+    behind, never a geometry. State moves PRE_APPROVED -> ISSUED by issuing a
+    new credential that names the one it supersedes and revoking the old one in
+    the same transaction; REVOKED is the status-list bit, as for a grant.
+    """
+
+    __tablename__ = "guarantees"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    jti: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    subject: Mapped[str] = mapped_column(String(64), index=True)  # GeoID or ListID
+    subject_kind: Mapped[str] = mapped_column(String(16))  # geoid | fieldlist
+    issuer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    beneficiary_account: Mapped[str] = mapped_column(String(128), index=True)
+    request_ref: Mapped[str] = mapped_column(String(128), index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    currency: Mapped[str] = mapped_column(String(3))
+    coverage_ratio: Mapped[float] = mapped_column(Float)
+    risk_class: Mapped[str] = mapped_column(String(32))
+    rule_set_version: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(16))  # PRE_APPROVED | ISSUED
+    supersedes_jti: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), default="active")  # active | revoked
+    status_list_index: Mapped[int] = mapped_column(Integer, unique=True)
+    credential: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
 
 
 class StatusListState(Base):
