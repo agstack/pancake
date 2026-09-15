@@ -890,14 +890,19 @@ md("""
 Three readings of one field, and the crop never changed. What changed is how
 the node can describe it.
 
-**2024 answers in words** — `cafe`, and the forest classes around it — because
-that layer's legend is declared. **2018 and 2014 answer with a bare number**,
-`unlabelled_12` and `unlabelled_14`, because theirs are not. That is the right
-thing for the node to say: inventing a label to satisfy a schema is how a wrong
-one becomes permanent, so it says what it has and no more.
+**All three answer in words** — `cafe` in 2024, `cafetales` in 2018 and 2014 —
+because each layer declares its publisher's own legend: 2024's was shipped
+beside the raster, 2018's sat in the raster's attribute table (`.vat.dbf`), and
+2014's in the table inside the original `.img`. None of those was declared
+when this notebook was first run on 2026-09-03; the two older vintages answered
+`unlabelled_12` and `unlabelled_14` until their tables were found and written
+in (2014 on 9 Sep, 2018 on 15 Sep). That was the right thing for the node to
+say in the meantime: inventing a label to satisfy a schema is how a wrong one
+becomes permanent, so it said what it had and no more. If a run of this
+notebook still shows a bare number for 2018, the node has not been rebuilt
+since `terrapipe-os` `2bd28fb`.
 
-The two numbers are resolved above from the publisher's own legends, read out
-of the source files on 2026-09-07. And this is where it gets dangerous:
+And this is where it gets dangerous:
 
 | | 2014 | 2018 |
 |---|---|---|
@@ -1778,12 +1783,15 @@ map against the global product, and the same field across three vintages —
 because a system that cannot show you a disagreement will eventually show you
 a confident falsehood instead.
 
-**What is not here.** NDVI and GFS are declared, mirrored and unreadable for
-every field in this notebook, which is why they carry EMPTY above rather than a
-chart; that is a provisioning gap, recorded as AG-013. Four more deforestation
-rasters are being mirrored. Neither of the two older ICF vintages declares its
-legend, so the node answers them with bare numbers and section 7 resolves those
-by hand — the codebook belongs in the layer definition, recorded as AG-001.
+**What is not here.** If NDVI or GFS carry EMPTY in the ledger above, the
+reason printed beside them is the whole story: both stores are populated on
+the node's drive (NDVI for the coffee field's cell on 2026-09-07; GFS history
+from 1 Jan 2026 and a week-ahead forecast, refreshed by cron), and an EMPTY
+means the running container cannot see the drive at the path it was told —
+recorded as AG-013, with the fix in the container's environment, not in code.
+Four more deforestation rasters are being mirrored. All three ICF vintages now
+declare their legends, but the codebooks differ and the node cannot yet refuse
+a cross-vintage comparison by raw code — recorded as AG-001.
 
 **And one thing that is design, not provisioning.** Pest and disease was asked
 for and is absent, because there is no open field-level pest surveillance layer
