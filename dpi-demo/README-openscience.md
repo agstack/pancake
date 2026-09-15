@@ -8,6 +8,21 @@ is read for that field, and a regulator-ready file comes out.
 
 This page is everything you need to run it. Nothing else.
 
+Three more notebooks run the same way, from the same `demo.env`:
+[`ar2_field_identity_demo.ipynb`](ar2_field_identity_demo.ipynb) (a boundary
+becomes a name, and what that name does and does not reveal),
+[`traceability_demo.ipynb`](traceability_demo.ipynb) (lots, containers, and
+walking the graph in both directions), and
+[`green_guarantee_demo.ipynb`](green_guarantee_demo.ipynb) (the Green Guarantee
+Micro-Credit System's 27 steps on DPI rails: a plot, a consent, a screen that
+comes out as *low / high / more information needed* with the evidence named,
+and a guarantee the lender can verify and the guarantor can revoke). The fourth
+uses code from three local checkouts for the pieces the hosted services do not
+yet have, and labels every such step `LOCAL` with the commit it ran on; its
+support module never imports the terrapipe-os backend — the classification
+rules are lifted from `screen.py` by source, so no reading can be computed
+in the kernel.
+
 **You do not need Docker, and you do not run any of the services.** They are
 somebody's deployment; you are a client of it. Nothing is computed in your
 kernel — there is an import hook in the first cell that makes that impossible

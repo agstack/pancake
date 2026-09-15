@@ -63,7 +63,6 @@ def _packets_for_geoid(
         pass # If AR2 fails or 404s, just use the geoid
 
     keys = list(list_ids | {geoid})
-    print(f"DEBUG keys: {keys}")
     query = select(MealPacket).where(MealPacket.geoid.in_(keys))
     if since is not None:
         query = query.where(MealPacket.time_index >= since)
