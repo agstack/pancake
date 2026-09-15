@@ -259,6 +259,18 @@ def empty(state: dict[str, Any], reason: str) -> None:
     print(f"  no data: {reason}")
 
 
+def yesterday() -> str:
+    """The last day for which GFS history can be complete, as the node wants it.
+
+    History is written from the archive once a day's four runs are all there,
+    which is the following morning UTC. Asking for today would ask for a day
+    still being written, and read as a gap that is not one.
+    """
+    import datetime as _dt
+
+    return (_dt.datetime.now(_dt.timezone.utc).date() - _dt.timedelta(days=1)).isoformat()
+
+
 def holds_data(response, state: dict[str, Any] | None = None) -> tuple[bool, str]:
     """Whether a read actually returned a reading, and why not if it did not.
 

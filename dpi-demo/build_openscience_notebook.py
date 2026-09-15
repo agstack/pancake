@@ -1113,19 +1113,34 @@ same way: a GeoID goes in, a value for that field comes out, area-weighted
 across the cells the field covers, with the coverage and the provenance
 attached.
 
-Two that matter for the demo are NDVI (crop vigour through a season, one value
-per acquisition date) and the GFS forecast (weather at the model grid point
-nearest the field). Both read from the existing TerraPipe share. Where that
-share is not mounted here, these steps skip — which is the honest outcome, and
-is what the badge will say.
+Two that matter for the demo are NDVI (crop vigour, one value per acquisition
+date) and GFS weather (at the model grid point nearest the field). Both read
+from the existing TerraPipe share. Where that share is not mounted here, these
+steps skip — which is the honest outcome, and is what the badge will say.
+
+The NDVI date is the one the store holds for the coffee field's cell. Counted on
+the server on 2026-09-15 with `bin/manifest ndvi_sentinel2 --cell 8f638b`: one
+acquisition, 2026-09-07, 764,064 pixels. Until then this cell asked for
+2026-08-21, a date nothing had ever been ingested for, and read EMPTY for a
+week while the question of whose fault that was went back and forth. A read on
+a date the store does not hold is not a test of the read path.
+
+Weather is asked twice, because the store holds two different things. The
+**week ahead** comes from the newest GFS run — every three hours to seven days
+out, refreshed four times a day. The **season behind** is history: the 03Z and
+06Z steps of every run since 1 January 2026, back-filled from the NOAA archive
+because the live feed keeps only a week. Both come out of the same door with the
+same shape, and where they overlap the node keeps the row from the freshest run.
 """)
 
 code("""
+NDVI_DATE = '2026-09-07'   # the acquisition the store holds for cell 8f638b; see the text above
+
 with od.step("NDVI for a field") as s:
     if NODE_UP:
         name = FIELDS[0]['properties']['name']
         r = od.get(f"{od.TERRAPIPE_OS_URL}/data/{GEOIDS[name]}/ndvi_sentinel2",
-                   token=HUB_TOKEN, grant=GRANT, params={'time': '2026-08-21'})
+                   token=HUB_TOKEN, grant=GRANT, params={'time': NDVI_DATE})
         # A 404 carrying reason: no_data is the node saying it holds nothing,
         # which is neither a success nor a failure. Recorded LIVE until
         # 2026-09-07, which made the ledger claim vegetation had been shown.
@@ -1134,12 +1149,35 @@ with od.step("NDVI for a field") as s:
     else:
         od.skip(s, "the node is not answering")
 
+
+def _weather_summary(body):
+    steps = body.get('steps', [])
+    if not steps:
+        return od.brief(body)
+    first, last = steps[0], steps[-1]
+    t2m = [x['values']['t2m'] - 273.15 for x in steps if 't2m' in x['values']]
+    rain = sum(x['values'].get('tp', 0.0) for x in steps)
+    lines = [
+        f"{len(steps)} three-hour steps, {first['valid_time'][:16]} .. {last['valid_time'][:16]}",
+        f"grid point {body['grid_point']} at {body['distance_km']} km; {body['files_read']} files read",
+        f"2 m temperature {min(t2m):.1f} .. {max(t2m):.1f} C; rain over the window {rain:.1f} mm",
+    ]
+    for note in body.get('notes', []):
+        lines.append(f"note: {note}")
+    return "\\n".join(lines)
+
+
 with od.step("GFS forecast for a field") as s:
+    # Two reads under one badge: the badge is LIVE only if both return a reading.
     if NODE_UP:
         name = FIELDS[0]['properties']['name']
-        r = od.get(f"{od.TERRAPIPE_OS_URL}/forecast/{GEOIDS[name]}", token=HUB_TOKEN)
-        got, why = od.holds_data(r, s)
-        print(od.brief(r.json()))
+        ahead = od.get(f"{od.TERRAPIPE_OS_URL}/forecast/{GEOIDS[name]}", token=HUB_TOKEN)
+        got_ahead, why_ahead = od.holds_data(ahead, s)
+        print("the week ahead  --", _weather_summary(ahead.json()) if got_ahead else why_ahead)
+        season = od.get(f"{od.TERRAPIPE_OS_URL}/forecast/{GEOIDS[name]}", token=HUB_TOKEN,
+                        params={'start': '2026-06-01', 'end': od.yesterday()})
+        got_season, why_season = od.holds_data(season, s)
+        print("the season behind --", _weather_summary(season.json()) if got_season else why_season)
     else:
         od.skip(s, "the node is not answering")
 """)
