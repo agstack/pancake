@@ -54,9 +54,26 @@ jobs:
           path: ar2
           token: ${{ secrets.AGSTACK_PAT }}
 
+      # The connector's contract test skips itself when terrapipe-os is absent,
+      # and the suite turns that skip into an error rather than let a test that
+      # never ran report the same green as one that did. Without this step the
+      # job fails on exactly that, which is what it did from 7 Sep to 15 Sep.
+      - name: Checkout terrapipe-os
+        uses: actions/checkout@v4
+        with:
+          repository: agstack/terrapipe-os
+          ref: main
+          path: terrapipe-os
+          token: ${{ secrets.AGSTACK_PAT }}
+
       - name: Services test suite
+        env:
+          # actions/checkout cannot place a repo outside the workspace, and the
+          # contract test looks beside it by default.
+          TERRAPIPE_OS_DIR: ${{ github.workspace }}/terrapipe-os
         run: |
           pip install -r ar2/requirements.txt
+          pip install -e terrapipe-os
           python -m pytest services/tests -q -ra --strict-markers --cov=services/pancake_services --cov-report=term
 
       - name: Test-issuer kit smoke

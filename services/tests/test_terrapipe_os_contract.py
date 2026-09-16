@@ -18,11 +18,12 @@ session pointed at it. The only fakes are the two services outside both repos
 tokens -- and the hub fake signs with real RS256 against a real JWKS, because
 the verifier under test does real cryptography.
 
-It skips when terrapipe-os is not checked out beside this repo. A skip here is
+It skips when terrapipe-os is not checked out beside this repo (or at TERRAPIPE_OS_DIR). A skip here is
 a gap in cover, not a pass: the suite reports it as one.
 """
 from __future__ import annotations
 
+import os
 import socket
 import sys
 import threading
@@ -34,7 +35,12 @@ import pytest
 
 from pancake_services.tap.adapter_base import SIRUPType
 
-TERRAPIPE_OS = Path(__file__).resolve().parents[3] / "terrapipe-os"
+# Beside the repo when a developer has both cloned; wherever TERRAPIPE_OS_DIR
+# says otherwise, which is how CI points at a checkout it must place inside the
+# workspace.
+TERRAPIPE_OS = Path(
+    os.environ.get("TERRAPIPE_OS_DIR") or Path(__file__).resolve().parents[3] / "terrapipe-os"
+)
 
 pytest.importorskip("terrapipe_os", reason="terrapipe-os is not installed in this environment")
 pytest.importorskip("uvicorn")
