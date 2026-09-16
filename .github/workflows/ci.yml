@@ -54,28 +54,37 @@ jobs:
           path: ar2
           token: ${{ secrets.AGSTACK_PAT }}
 
-      # The connector's contract test skips itself when terrapipe-os is absent,
-      # and the suite turns that skip into an error rather than let a test that
-      # never ran report the same green as one that did. Without this step the
-      # job fails on exactly that, which is what it did from 7 Sep to 15 Sep.
       - name: Checkout terrapipe-os
         uses: actions/checkout@v4
         with:
-          # The node lives under sumerjohal, not agstack; naming agstack here
-          # cost a run.
           repository: sumerjohal/terrapipe-os
           ref: main
           path: terrapipe-os
           token: ${{ secrets.AGSTACK_PAT }}
 
-      - name: Services test suite
-        env:
-          # actions/checkout cannot place a repo outside the workspace, and the
-          # contract test looks beside it by default.
-          TERRAPIPE_OS_DIR: ${{ github.workspace }}/terrapipe-os
+      - name: Checkout ar2-hub
+        uses: actions/checkout@v4
+        with:
+          repository: agstack/ar2-hub
+          ref: main
+          path: ar2-hub
+          token: ${{ secrets.AGSTACK_PAT }}
+
+      # The tests look for sibling repositories beside this one, and for a
+      # pancake checkout reachable from home -- the layout the READMEs tell a
+      # developer to create. actions/checkout cannot write outside the
+      # workspace, so the layout is assembled here instead of being assumed.
+      # Without this, fourteen cross-layer tests skip and the compose build
+      # context does not exist, which is how this job stayed red from 7 Sep.
+      - name: Lay the checkouts out the way the tests expect
         run: |
-          pip install -r ar2/requirements.txt
-          pip install -e terrapipe-os
+          mv ar2 ar2-hub terrapipe-os ..
+          ln -s "$GITHUB_WORKSPACE" "$HOME/pancake"
+
+      - name: Services test suite
+        run: |
+          pip install -r ../ar2/requirements.txt
+          pip install -e ../terrapipe-os
           # What the notebook tests import. Without folium's branca, seven
           # assertions about the AR2 notebook fail on the import rather than on
           # anything they are about.

@@ -148,6 +148,10 @@ def test_the_demo_config_parses_whatever_is_in_the_ambient_environment(monkeypat
     run in CI, it passed. A test whose result depends on the shell it inherits
     is not reporting on the code.
     """
+    # Including HUB_URL, which the seed vendor's config interpolates. Leaving it
+    # ambient is the very fault this test was written about: it passed on a
+    # laptop that exported HUB_URL and failed in CI, for nine days.
+    monkeypatch.setenv("HUB_URL", "http://hub:8000")
     for var in ("TERRAPIPE_OS_URL", "TERRAPIPE_OS_CLIENT_ID", "TERRAPIPE_OS_CLIENT_SECRET"):
         monkeypatch.delenv(var, raising=False)
     assert load_enabled_vendors(str(CONFIG)), "the seed vendor is always enabled"
