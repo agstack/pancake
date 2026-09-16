@@ -136,7 +136,7 @@ with od.step("register four plots -> GeoIDs") as s:
 """)
 
 md("""
-## 3. Steps 4–5 for a plot that is a point (LOCAL — `ar2 4d010ab`)
+## 3. Steps 4–5 for a plot that is a point (LOCAL — `ar2 f6a6a2f`)
 
 Regulation (EU) 2023/1115 Art. 2(28) lets a plot of **at most four hectares**
 be described by a single coordinate, and the SRS carries that (`TFC-F-09`,
@@ -185,6 +185,56 @@ with od.step("point plot -> GeoID, resolved by distance", outcome=od.LOCAL) as s
         ok, why = gg.declared_area(area)
         print(f"  declared {area:>3} ha  {'accepted' if ok else 'REFUSED'}: {why}")
     od.local(s, gg.point_regime_note())
+""")
+
+md("""
+### 3b. The rest of the journey, for the same coordinate plot
+
+A name is not enough. The SRS asks for a *verdict* on the plot and a filing the
+EU registry will accept, and a plot declared by a coordinate has to reach both
+by the same route a boundary does. Three steps below, and each was broken until
+this evening:
+
+- **What the registry says the plot is.** A screening node that does not know it
+  is holding a coordinate has no way to know how much ground the coordinate
+  stands for. `GeometryKind` and `AreaHa` are now on the wire at L0 as well as
+  L1. The hosted node predates them, so the cell below asks it and reports what
+  it actually said.
+- **What the screen reads.** A point's cover is one S2 leaf cell, about a
+  centimetre. Read as it stands, the screen returned the single 36 m JRC cell
+  containing it, at `coverage_fraction` 1.0 and `scope: "field"` with no
+  caveat — a clean bill of health for a plot whose surrounding ground may be
+  cleared. It is now read over a disc of the **declared area** around the fix,
+  labelled `declared_footprint`, with the declaration named in the caveat.
+- **What gets filed.** The EU takes a Point geometry only with an `Area`
+  property, and only up to four hectares. AR2's export emitted a Point with no
+  `Area`, which the DDS schema rejects. It now emits the declared area, or
+  refuses and says what to do.
+""")
+
+code("""
+POINT_HA = 2.0   # a plot at the larger end of the survey, well inside the 4 ha ceiling
+
+with od.step("a coordinate plot is a peer through screen and filing", outcome=od.LOCAL) as s:
+    print("  what the registry says this plot is:")
+    status, body = gg.l0_view(od.NODE_URL, GEO["compliant_coffee"], TOKEN)
+    print(f"    hosted node (HTTP {status}): {gg.kind_on_the_wire(body)}")
+    print("    after redeploy:  " + gg.kind_on_the_wire({"GeometryKind": "point", "AreaHa": POINT_HA}))
+
+    print("  what the screen reads for it:")
+    gg.show_footprint(gg.footprint_of(lat, lng, POINT_HA))
+
+    print("  what gets filed for it:")
+    filed = gg.point_filing(lat, lng, POINT_HA)
+    print(f"    geometry {filed['geometry']} with Area {filed['area']} ha; "
+          f"DDS rules broken: {filed['problems'] or 'none'}")
+    refused = gg.point_filing(lat, lng, None)
+    print(f"    with no declared area: refused -- {refused['refused'][:96]}...")
+
+    if filed["problems"] or filed["geometry"] != "Point" or "refused" not in refused:
+        raise RuntimeError("the point filing did not come out as a valid Point with an Area")
+    od.local(s, "AR2 builds the filing from the checkout here; the two rules the EU applies to a "
+                "Point are checked in this process, and in terrapipe-os by dds.validate")
 """)
 
 # ==========================================================================

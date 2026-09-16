@@ -190,6 +190,217 @@ def point_regime_note() -> str:
 
 
 # --------------------------------------------------------------------------
+# the rest of the journey for a plot declared by a coordinate
+# --------------------------------------------------------------------------
+
+
+def kind_on_the_wire(body: dict[str, Any]) -> str:
+    """What an answer says about which kind of plot it describes.
+
+    A consumer that screens the plot needs two things from the masked view: that
+    this is a coordinate rather than a boundary, and how much ground the
+    coordinate stands for. Reported from the answer, so a node that has not been
+    redeployed reads as silent rather than as a polygon.
+    """
+    data = body.get("Geo Data") or {}
+    kind = body.get("GeometryKind") or data.get("geometry_kind")
+    area = body.get("AreaHa")
+    if area is None:
+        area = data.get("declared_area_ha", data.get("area_ha"))
+    if not kind:
+        return ("the answer does not say which kind of plot this is -- this node predates "
+                "GeometryKind, so a screening node has to infer it from the cover")
+    return f"kind {kind}" + (f", standing for {area:g} ha as declared" if area else ", no declared area")
+
+
+def _cover_centroid(tokens: list[str]):
+    """The centre of a one-cell cover. terrapipe-os's ``read.cover_centroid``
+    weights by leaf cells across many cells; for a point there is one."""
+    import s2sphere  # noqa: PLC0415
+
+    if len(tokens) != 1:
+        raise _ScreenError("this demo only takes the centre of a one-cell point cover")
+    return s2sphere.LatLng.from_point(
+        s2sphere.Cell(s2sphere.CellId.from_token(tokens[0])).get_center()
+    )
+
+
+def _footprint_rules() -> dict[str, Any]:
+    """``declared_footprint`` and its constants, lifted from the checkout by source.
+
+    Same discipline as ``classifier()``: the notebook makes ``terrapipe_os``
+    unimportable so that no *reading* can come from this process, and this keeps
+    to it. What is loaded is pure geometry -- a disc of the declared area,
+    covered in S2 cells -- and it cannot open a store. The function is the
+    repository's own, so the numbers below are the ones a redeployed node will
+    produce rather than a restatement of them.
+    """
+    import ast  # noqa: PLC0415
+    from dataclasses import replace  # noqa: PLC0415
+
+    import s2sphere  # noqa: PLC0415
+
+    source = (TERRAPIPE_OS_DIR / "src" / "terrapipe_os" / "screen.py").read_text()
+    tree = ast.parse(source)
+    keep: list[ast.stmt] = []
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in ("declared_footprint", "footprint_radius_m"):
+            keep.append(node)
+        elif isinstance(node, ast.ClassDef) and node.name == "Footprint":
+            keep.append(node)
+        elif isinstance(node, ast.Assign) and all(isinstance(t, ast.Name) for t in node.targets):
+            if all(t.id.isupper() for t in node.targets):  # type: ignore[union-attr]
+                keep.append(node)
+
+    class _S2Levels:
+        """Only the two level constants ``declared_footprint`` reads."""
+
+        BLOCKING_LEVEL = 13
+        LEAF_LEVEL = 30
+
+    ns: dict[str, Any] = {
+        "Any": Any,
+        "math": math,
+        "s2sphere": s2sphere,
+        "s2": _S2Levels,
+        "replace": replace,
+        "dataclass": dataclass,
+        "Cover": _PointCover,
+        "ScreenError": _ScreenError,
+        # The one function declared_footprint calls out to, lifted the same way
+        # from read.py: the area-weighted centre of a cover. For a one-cell
+        # point cover it is the cell's own centre.
+        "cover_centroid": _cover_centroid,
+        "__name__": "terrapipe_os_footprint_rules",
+    }
+    # The Footprint dataclass resolves its annotations through its module, so
+    # the namespace needs to be a module that exists rather than only a name.
+    import sys as _sys  # noqa: PLC0415
+    import types  # noqa: PLC0415
+
+    holder = types.ModuleType("terrapipe_os_footprint_rules")
+    holder.__dict__.update(ns)
+    _sys.modules[holder.__name__] = holder
+    ns = holder.__dict__
+    exec(compile(ast.Module(body=keep, type_ignores=[]), "screen.py", "exec"), ns)  # noqa: S102
+    for name in ("declared_footprint", "footprint_radius_m", "FOOTPRINT_LEVEL"):
+        if name not in ns:
+            raise RuntimeError(f"screen.py at {checkouts()['terrapipe-os']} has no {name}")
+    return ns
+
+
+class _ScreenError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class _PointCover:
+    """Just enough of terrapipe-os's ``Cover`` for the footprint arithmetic."""
+
+    geo_id: str
+    tier: str
+    tokens: tuple[str, ...]
+    masking_level: str
+    area_ha: float | None = None
+    geometry_kind: str | None = None
+
+    @property
+    def is_point(self) -> bool:
+        return self.geometry_kind == "point"
+
+    @property
+    def finest_level(self) -> int:
+        import s2sphere  # noqa: PLC0415
+
+        return max(s2sphere.CellId.from_token(t).level() for t in self.tokens)
+
+
+def footprint_of(lat: float, lng: float, area_ha: float) -> dict[str, Any]:
+    """The ground a screen reads for a coordinate plot, and the ground it used to read.
+
+    Geometry only: no store is touched, so this says what *would* be read rather
+    than what a layer holds. The comparison is the point -- one 36 m data cell
+    against a disc of the declared area -- and it is the difference between a
+    verdict about a plot and a verdict about a pixel that happens to be in it.
+    """
+    import s2sphere  # noqa: PLC0415
+
+    rules = _footprint_rules()
+    leaf = s2sphere.CellId.from_lat_lng(s2sphere.LatLng.from_degrees(lat, lng))
+    footprint = rules["declared_footprint"](
+        _PointCover(
+            geo_id="demo-point",
+            tier="precise",
+            tokens=(leaf.to_token(),),
+            masking_level="L1",
+            area_ha=area_ha,
+            geometry_kind="point",
+        )
+    )
+
+    # The single data cell the old path read: the JRC primary layer is stored at
+    # level 18, about 36 m across at this latitude.
+    one_pixel_ha = s2sphere.Cell(leaf.parent(18)).exact_area() * 6371010.0**2 / 10_000.0
+
+    return {
+        "declared_ha": area_ha,
+        "radius_m": footprint.radius_m,
+        "screened_ha": footprint.screened_area_ha,
+        "cells": len(footprint.cover.tokens),
+        "one_pixel_ha": one_pixel_ha,
+        "ratio": area_ha / one_pixel_ha,
+        "commit": _git_head(TERRAPIPE_OS_DIR),
+    }
+
+
+def show_footprint(f: dict[str, Any]) -> None:
+    print(f"  declared            {f['declared_ha']:g} ha, by one coordinate "
+          f"(Reg. (EU) 2023/1115 Art. 2(28))")
+    print(f"  screened now        a {f['radius_m']:.0f} m disc, {f['cells']} S2 cells, "
+          f"{f['screened_ha']:.2f} ha once covered")
+    print(f"  screened before     one {f['one_pixel_ha']*10_000:,.0f} m² JRC cell "
+          f"= {f['one_pixel_ha']:.3f} ha, labelled scope=field")
+    print(f"  the gap             the plot is {f['ratio']:.0f}x the cell that stood for it, "
+          f"and coverage read 100%")
+    print(f"  scope now           declared_footprint, with the declaration named in the caveat "
+          f"(terrapipe-os {f['commit']})")
+
+
+def point_filing(lat: float, lng: float, area_ha: float | None) -> dict[str, Any]:
+    """The EU filing for a coordinate plot, from AR2's own export builder.
+
+    The two rules the DDS schema applies to a Point are checked here rather
+    than by importing terrapipe-os's validator: an Area must be present, and it
+    must not exceed four hectares. terrapipe-os enforces the same two in
+    ``dds.validate``, pinned by ``tests/test_dds_points.py``; what this cell
+    shows is that what AR2 emits satisfies them.
+    """
+    if str(AR2_DIR) not in sys.path:
+        sys.path.insert(0, str(AR2_DIR))
+    from app import geoid_v2  # noqa: PLC0415
+    from app.utils import Utils  # noqa: PLC0415
+
+    wkt = f"POINT ({lng} {lat})"
+    try:
+        feature = Utils.get_eudr_multipolygon(wkt, area_ha)
+    except geoid_v2.GeometryUnusable as exc:
+        return {"refused": str(exc)}
+
+    area = (feature.get("properties") or {}).get("Area")
+    problems = []
+    if area is None:
+        problems.append("properties.Area: missing -- the EU rejects a Point without one")
+    elif area > geoid_v2.POINT_MAX_AREA_HA:
+        problems.append(f"polygon_above_4ha: {area} ha given as a point")
+    return {
+        "geometry": feature["geometry"]["type"],
+        "area": area,
+        "problems": problems,
+    }
+
+
+
+# --------------------------------------------------------------------------
 # the risk class (terrapipe-os 18a7f72), over the hosted node's evidence
 # --------------------------------------------------------------------------
 
