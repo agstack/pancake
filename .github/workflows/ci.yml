@@ -61,7 +61,9 @@ jobs:
       - name: Checkout terrapipe-os
         uses: actions/checkout@v4
         with:
-          repository: agstack/terrapipe-os
+          # The node lives under sumerjohal, not agstack; naming agstack here
+          # cost a run.
+          repository: sumerjohal/terrapipe-os
           ref: main
           path: terrapipe-os
           token: ${{ secrets.AGSTACK_PAT }}
