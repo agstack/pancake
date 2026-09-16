@@ -85,6 +85,10 @@ jobs:
         run: |
           pip install -r ../ar2/requirements.txt
           pip install -e ../terrapipe-os
+          # The suite runs subprocesses -- the notebook's import guard is tested
+          # by importing it in a fresh interpreter -- and those do not inherit
+          # pytest's path juggling.
+          pip install -e services
           # What the notebook tests import. Without folium's branca, seven
           # assertions about the AR2 notebook fail on the import rather than on
           # anything they are about.
