@@ -479,7 +479,8 @@ md("""
 ## 12. The MEAL — every step, hash-chained, for the plot (LOCAL)
 
 The SRS asks for an audit trail (`CC-F-11`, `D-2`). Here it is the same
-Merkle Event Audit Ledger the consent grants write to, keyed by the plot's
+MEAL (Multi-User Engagement Asynchronous Ledger, Pancake's append-only
+audit ledger, `docs/MEAL.md`) the consent grants write to, keyed by the plot's
 GeoID: pre-approval, issue, the supersession's revocation, the final
 revocation, each a signed packet chained to the one before. The chain
 verifies or it does not.
