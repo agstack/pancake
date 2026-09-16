@@ -76,6 +76,10 @@ jobs:
         run: |
           pip install -r ar2/requirements.txt
           pip install -e terrapipe-os
+          # What the notebook tests import. Without folium's branca, seven
+          # assertions about the AR2 notebook fail on the import rather than on
+          # anything they are about.
+          pip install folium plotly
           python -m pytest services/tests -q -ra --strict-markers --cov=services/pancake_services --cov-report=term
 
       - name: Test-issuer kit smoke
