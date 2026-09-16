@@ -6,7 +6,8 @@ than left to the consumer:
 
 - The SIRUP is unitless and typed ``vegetation_index`` rather than
   ``satellite_imagery``. There is no image in it; there is one area-weighted
-  number per date over the field.
+  number per date over the plot -- over its boundary, or over the footprint the
+  node derives from a coordinate plot's declared area.
 - A run asks for several dates and stores what came back. A date with no
   acquisition is absent from the series and listed in ``dates_absent`` with
   the node's reason, so a gap is visible as a gap. Interpolating across it

@@ -386,10 +386,11 @@ def l0_view(node_url: str, geo_id: str, token: str) -> tuple[int, dict[str, Any]
 def describe_l0(body: dict[str, Any], field: dict[str, Any]) -> list[str]:
     """Name what is and is not in an L0 answer, from the answer rather than from memory.
 
-    The answer carries a polygon -- the S2 cell the registry masks the field to,
+    The answer carries a polygon -- the S2 cell the registry masks the plot to,
     tens of square kilometres -- and a reader who sees "Polygon" in it may take
-    that for the boundary. So the check is the one that matters: does any vertex
-    of the field the notebook registered appear in what came back.
+    that for the boundary. So the check is the one that matters: does any
+    position the notebook registered appear in what came back. Works for either
+    kind of plot: a boundary's vertices, or a coordinate's single position.
     """
     import openscience_demo as od  # noqa: PLC0415
 
@@ -400,8 +401,17 @@ def describe_l0(body: dict[str, Any], field: dict[str, Any]) -> list[str]:
     if cell:
         out.append(f"geometry in the answer: S2 cell {cell} (level {od.MASKED_LEVEL}), "
                    f"about {od._cell_area_km2(cell):,.0f} km² -- the registry's mask, not the boundary")
-    ring = field["geometry"]["coordinates"][0]
-    leaked = [pt for pt in ring if f"{pt[0]:.6f}".rstrip("0") in text and f"{pt[1]:.6f}".rstrip("0") in text]
-    out.append(f"vertices of the registered boundary present in the answer: {len(leaked)} of {len(ring)}")
+    # Both kinds of plot: a boundary discloses through its vertices, a plot
+    # declared by a coordinate through the one position it has. Indexing
+    # coordinates[0] for a ring would raise on a Point, and the leak question is
+    # the same question for either -- does any position we registered appear in
+    # what came back.
+    geometry = field["geometry"]
+    positions = (
+        [geometry["coordinates"]] if geometry["type"] == "Point" else geometry["coordinates"][0]
+    )
+    noun = "the registered coordinate" if geometry["type"] == "Point" else "the registered boundary"
+    leaked = [pt for pt in positions if f"{pt[0]:.6f}".rstrip("0") in text and f"{pt[1]:.6f}".rstrip("0") in text]
+    out.append(f"positions of {noun} present in the answer: {len(leaked)} of {len(positions)}")
     out.append("keys: " + ", ".join(sorted(body.keys())))
     return out

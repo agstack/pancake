@@ -9,8 +9,12 @@ status list; it names the risk class it was issued on and the rule set that
 class was reached under; and every step of its life is in the MEAL.
 
 The subject is a GeoID or a ListID -- never a geometry. What the lender receives
-is the guarantee and the L0 view of the plot; the polygon stays with the farmer
-and whoever holds an L1 grant for the screen.
+is the guarantee and the L0 view of the plot; the plot's own location stays with
+the farmer and whoever holds an L1 grant for the screen. Plot here means either
+kind: a boundary, or a coordinate standing for up to four hectares under
+Regulation (EU) 2023/1115 Art. 2(28). Nothing in this service knows which, and
+that is deliberate -- a guarantee is over an identifier, and the two kinds of
+plot are indistinguishable at this layer.
 
 State: PRE_APPROVED -> ISSUED is a new credential that names the one it
 supersedes; the superseded one is revoked in the same transaction, so at any

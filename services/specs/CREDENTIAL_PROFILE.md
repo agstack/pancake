@@ -5,7 +5,7 @@
 
 ## 1. What this credential says
 
-"The holder identified below has been granted **read access at masking level L1** (full geometry) to the fields in FieldList `<ListID>`, for purpose `<purpose>`, until `<exp>` — signed by an issuer the AgStack hub accredits."
+"The holder identified below has been granted **read access at masking level L1** (the plot as registered) to the plots in FieldList `<ListID>`, for purpose `<purpose>`, until `<exp>` — signed by an issuer the AgStack hub accredits."
 
 A relying party (an AR node, TerraPipe, an EUDR auditor) verifies:
 
@@ -36,7 +36,7 @@ A relying party (an AR node, TerraPipe, an EUDR auditor) verifies:
 | `vct` | yes | Verifiable credential type: `agstack.org/credentials/field-access-grant/v1` |
 | `grantee` | yes | Hub account id of the grantee (the DPI-account delivery path: grantee authenticates to the hub and retrieves credentials issued to them) |
 | `cnf` | no | Holder key binding (`{"jwk": ...}`) — set when the grantee holds a wallet keypair (e.g. TraceFoodChain wallet); omitted for account-delivery-only grants in phase 1 |
-| `masking_level` | yes | Access level granted: `"L1"` (full geometry). Future: `"L2"` (centroid+area) |
+| `masking_level` | yes | Access level granted: `"L1"` (the plot as registered: a boundary, or a coordinate and its declared area). Future: `"L2"` (centroid+area) |
 | `purpose` | yes | Free-text purpose string echoed into ODRL (e.g. `"eudr-due-diligence"`) |
 | `odrl` | yes | Embedded ODRL 2.2 policy object (below) |
 | `status` | yes | StatusList2021 reference: `{"status_list": {"uri": "<https URL>", "idx": <int>}}` |
