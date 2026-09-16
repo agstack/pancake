@@ -13,9 +13,10 @@ Exits 0 only if every step behaves exactly as specified.
 """
 from __future__ import annotations
 
+import os
+
 import sys
 from pathlib import Path
-from contextlib import contextmanager
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
@@ -25,7 +26,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from pancake_services.common.config import Settings  # noqa: E402
 from pancake_services.grants.app import create_app  # noqa: E402
-from pancake_services.grants.issuer import IssuerIdentity, generate_keypair_pem  # noqa: E402
+from pancake_services.grants.issuer import IssuerIdentity  # noqa: E402
 from pancake_services.grants.statuslist import StatusList  # noqa: E402
 from pancake_services.grants.testkit.fake_ar2 import fake_ar2_node  # noqa: E402
 
@@ -58,6 +59,12 @@ def main() -> int:
     owner = {"Authorization": f"Bearer {hub.token('hub-acct-farmer-maria')}"}
     buyer = {"Authorization": f"Bearer {hub.token('hub-acct-eu-buyer')}"}
 
+    # The AR2 this demo talks to is the in-process fake below, so the shared
+    # secret is a formality -- but Pancake refuses to call an AR2 it cannot
+    # authenticate itself to, and is right to. Set it only if the environment
+    # has not.
+    os.environ.setdefault("AR2_INTERNAL_SHARED_SECRET", "demo-shared-secret")
+
     with fake_ar2_node():
         # 1. FieldList
         fieldlist = client.post(
@@ -76,6 +83,8 @@ def main() -> int:
             },
             headers=owner,
         ).json()
+        if "jti" not in issued:
+            raise SystemExit(f"POST /grants/issue did not return a grant: {issued}")
         step(2, f"Grant issued, jti={issued['jti']}, status index={issued['status_list_index']}")
 
         # 3. Retrieve via DPI account
