@@ -136,7 +136,7 @@ with od.step("register four plots -> GeoIDs") as s:
 """)
 
 md("""
-## 3. Steps 4–5 for a plot that is a point (LOCAL — `ar2 3aa3514`)
+## 3. Steps 4–5 for a plot that is a point (LOCAL — `ar2 4d010ab`)
 
 Regulation (EU) 2023/1115 Art. 2(28) lets a plot of **at most four hectares**
 be described by a single coordinate, and the SRS carries that (`TFC-F-09`,
@@ -144,26 +144,43 @@ be described by a single coordinate, and the SRS carries that (`TFC-F-09`,
 every Honduran coffee plot qualifies. The question the SRS leaves open is what
 a *name* for a point is.
 
-AR2 accepted points before tonight but named each by its **level-30 leaf
-cell**, about a centimetre: two GPS fixes of the same tree a minute apart were
-two plots, with no IoU to reconcile them because a point has no area. Tonight's
-regime names a point by the **level-20 cell** it lands in — about 8 m, the
-distance a handheld fix cannot reliably leave — and takes the area as a
-*declared* attribute, capped at the regulation's four hectares. The hosted node
-does not have this yet, so it runs from the checkout and is marked LOCAL.
+A field is named by its cover and two redraws of it are brought together by
+IoU at registration. A point is now the same thing with a cover of one cell:
+the **leaf cell** it lands in, so the fix keeps the precision it was surveyed
+at, and two fixes of one tree are brought together by **distance** — within
+10 m is the same plot, and the second submission is recorded as an alias of the
+first. The area is a *declared* attribute, capped at the regulation's four
+hectares.
+
+Earlier today this was done by naming the point after its level-20 cell (~8 m)
+on the reasoning that a fix cannot leave one. Measured over 20,000 fixes in the
+coffee belt, that held a 1 m re-survey together 86.3% of the time and called two
+plots 5 m apart one plot 40.0% of the time: a fix near a cell boundary crosses
+it, and the grid cannot know it is near one. The cell below shows both answers
+for the same tree. The hosted node has neither yet, so this runs from the
+checkout and is marked LOCAL; the alias-writing half needs Postgres and is a
+Phase 1 check.
 """)
 
 code("""
-lat, lng = gg.a_tree(14.7500, -88.2500)   # a tree on a highland coffee plot
-with od.step("point plot -> GeoID (L20 regime)", outcome=od.LOCAL) as s:
+# A tree whose fix sits close to a level-20 boundary -- about one in seven does,
+# and it is the case the withdrawn regime got wrong.
+lat, lng = gg.a_tree_near_a_cell_edge(14.7500, -88.2500)
+with od.step("point plot -> GeoID, resolved by distance", outcome=od.LOCAL) as s:
     here = gg.point_name(lat, lng)
-    print(f"  the point         {lat:.4f}, {lng:.4f}")
-    print(f"  named by cell     {here.token}  (level {here.level})")
+    print(f"  the fix           {lat:.6f}, {lng:.6f}  (near a level-20 boundary)")
+    print(f"  named by cell     {here.token}  (level {here.level}, one-cell cover)")
     print(f"  GeoID             {here.geo_id}")
     near = gg.jitter(lat, lng, metres=1.0)
     far = gg.jitter(lat, lng, metres=50.0)
-    print(f"  4 fixes 1 m off   {sum(p.geo_id == here.geo_id for p in near)}/4 converge on the same GeoID")
-    print(f"  4 fixes 50 m off  {sum(p.geo_id == here.geo_id for p in far)}/4 converge (a different plot)")
+    same, how = gg.resolves_to_one_plot(near, here)
+    print(f"  4 fixes 1 m off   {same}/4 resolve onto this plot ({how})")
+    print(f"                    the withdrawn L20 naming would have kept {gg.grid_would_have(near, here)}/4")
+    print(f"  across the belt   {gg.belt_wide_rates()}")
+    same_far, _ = gg.resolves_to_one_plot(far, here)
+    print(f"  4 fixes 50 m off  {same_far}/4 resolve (a different plot, as it should be)")
+    print(f"  distinct GeoIDs   {len({p.geo_id for p in near})} for the 4 near fixes: the name keeps the fix, "
+          f"the resolver keeps the plot")
     for area in (0.3, 4.0, 4.5):
         ok, why = gg.declared_area(area)
         print(f"  declared {area:>3} ha  {'accepted' if ok else 'REFUSED'}: {why}")
@@ -521,7 +538,7 @@ md("""
 |---|---|---|
 | 1–3b | Farmer applies; identification, carnet, photo | NOT-OURS (farmer identity is Layer 3; the *plot* de-duplicates by construction, §2) |
 | 4 | App captures the plot | NOT-OURS (the App); the shape it must produce is defined: polygon, or point + declared area ≤ 4 ha (§3) |
-| 5 | Upload → register → `plotId` | §2 LIVE (polygon), §3 LOCAL (point) |
+| 5 | Upload → register → `plotId` | §2 LIVE (polygon), §3 LOCAL (point: name pure, resolver needs the node's DB) |
 | 5b | Risk result | §6 LIVE verdict + evidence; §7 class (LOCAL until the node is redeployed) |
 | 6–8 | Publish and discover through the data space | not yet: a DCAT/DSP façade over the node is the next phase; consent grants are the exchange today (§5) |
 | 9 | Validate the evidence | §9 LIVE-shaped: re-verification of a signed record |

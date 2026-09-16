@@ -65,7 +65,7 @@ def checkouts() -> dict[str, str]:
 
 
 # --------------------------------------------------------------------------
-# the point regime (ar2 3aa3514)
+# the point regime (ar2 4d010ab)
 # --------------------------------------------------------------------------
 
 METRE_DEG = 1 / 111_320
@@ -94,21 +94,6 @@ def point_name(lat: float, lng: float) -> PointName:
     return PointName(lat, lng, tokens[0], g.token_level(tokens[0]), geo_id)
 
 
-def a_tree(lat: float, lng: float) -> tuple[float, float]:
-    """The centre of the level-20 cell around a coordinate: a tree to fix a GPS on.
-
-    The jitter demonstration puts the fixes around a point well inside a cell,
-    so what it shows is the regime and not whether the chosen coordinate
-    happened to sit a metre from a cell edge.
-    """
-    import s2geometry as s2g  # noqa: PLC0415
-
-    g = _geoid_v2()
-    cell = s2g.S2CellId(s2g.S2LatLng.FromDegrees(lat, lng)).parent(g.POINT_LEVEL)
-    ll = cell.ToLatLng()
-    return ll.lat().degrees(), ll.lng().degrees()
-
-
 def jitter(lat: float, lng: float, metres: float) -> list[PointName]:
     """The same tree, fixed four times with a GPS that is off by ``metres``."""
     out = []
@@ -116,6 +101,77 @@ def jitter(lat: float, lng: float, metres: float) -> list[PointName]:
         out.append(point_name(lat + dlat * metres * METRE_DEG,
                               lng + dlng * metres * METRE_DEG / math.cos(math.radians(lat))))
     return out
+
+
+def resolves_to_one_plot(fixes: list[PointName], first: PointName) -> tuple[int, str]:
+    """How many of those fixes the registry would resolve onto the first one.
+
+    This is the decision the node makes at registration, run here as the pure
+    function it is: distance against the threshold. The DB half -- blocking on
+    the L20 cell and its neighbours, then writing the same_as alias -- needs
+    Postgres and is checked when the node is redeployed.
+    """
+    g = _geoid_v2()
+    same = sum(1 for f in fixes if g.point_same_as(first.lat, first.lng, f.lat, f.lng))
+    return same, f"threshold {g.POINT_SAME_AS_METRES:g} m"
+
+
+def a_tree_near_a_cell_edge(lat: float, lng: float, level: int = 20) -> tuple[float, float]:
+    """A coordinate within half a metre of a level-20 boundary, near the one given.
+
+    Not a trick: about one fix in seven is this close to an edge, because an 8 m
+    cell has a lot of edge. Picking a mid-cell tree for the comparison below
+    would show the withdrawn regime at its best and say nothing about the case
+    that made it fail.
+    """
+    import s2geometry as s2g  # noqa: PLC0415
+
+    def token(la, ln):
+        return s2g.S2CellId(s2g.S2LatLng.FromDegrees(la, ln)).parent(level).ToToken()
+
+    here = token(lat, lng)
+    step = 0.25 * METRE_DEG
+    for i in range(1, 400):  # walk north until the cell changes, then step back
+        if token(lat + i * step, lng) != here:
+            return lat + (i - 1) * step, lng
+    return lat, lng
+
+
+def belt_wide_rates(trials: int = 2000, metres: float = 1.0, seed: int = 7) -> str:
+    """What each rule does to a re-survey across the coffee belt, computed here."""
+    import random  # noqa: PLC0415
+
+    import s2geometry as s2g  # noqa: PLC0415
+
+    g = _geoid_v2()
+    rng = random.Random(seed)
+    grid = distance = 0
+    for _ in range(trials):
+        la = 14.0 + rng.random()
+        ln = -89.0 + rng.random() * 2
+        bearing = rng.random() * 2 * math.pi
+        la2 = la + metres * math.cos(bearing) * METRE_DEG
+        ln2 = ln + metres * math.sin(bearing) * METRE_DEG / math.cos(math.radians(la))
+        grid += (s2g.S2CellId(s2g.S2LatLng.FromDegrees(la, ln)).parent(20).ToToken()
+                 == s2g.S2CellId(s2g.S2LatLng.FromDegrees(la2, ln2)).parent(20).ToToken())
+        distance += g.point_same_as(la, ln, la2, ln2)
+    return (f"{trials:,} random fixes re-surveyed {metres:g} m away: "
+            f"the L20 grid keeps {grid / trials:.1%} together, the {g.POINT_SAME_AS_METRES:g} m "
+            f"threshold {distance / trials:.1%}")
+
+
+def grid_would_have(fixes: list[PointName], first: PointName, level: int = 20) -> int:
+    """How many the withdrawn level-20 naming would have kept together.
+
+    Kept in the demo because the answer depends on where the tree happens to sit
+    in its cell, which is the reason that regime was withdrawn.
+    """
+    import s2geometry as s2g  # noqa: PLC0415
+
+    def cell(p):
+        return s2g.S2CellId(s2g.S2LatLng.FromDegrees(p.lat, p.lng)).parent(level).ToToken()
+
+    return sum(1 for f in fixes if cell(f) == cell(first))
 
 
 def declared_area(area_ha: float | None) -> tuple[bool, str]:
@@ -128,7 +184,8 @@ def declared_area(area_ha: float | None) -> tuple[bool, str]:
 
 def point_regime_note() -> str:
     g = _geoid_v2()
-    return (f"points are named by their level-{g.POINT_LEVEL} cell; a point may stand for at most "
+    return (f"a point is named by its leaf cell and resolved onto an existing plot within "
+            f"{g.POINT_SAME_AS_METRES:g} m; it may stand for at most "
             f"{g.POINT_MAX_AREA_HA:g} ha (ar2 {_git_head(AR2_DIR)})")
 
 
