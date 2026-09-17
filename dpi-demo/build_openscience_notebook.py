@@ -1156,12 +1156,23 @@ with od.step("NDVI for a field") as s:
 
 
 def _weather_summary(body):
+    # The node flattens the variables onto each step: a step is
+    # {'valid_time': ..., 'forecast_hour': ..., 't2m': ..., 'tp': ..., ...},
+    # with no 'values' key. This read was x['values']['t2m'], which is the
+    # shape of terrapipe-os's internal dataclass rather than the shape it
+    # serialises, so the cell raised KeyError('values') on a perfectly good
+    # HTTP 200 and had never once worked. Recorded as AG-039.
     steps = body.get('steps', [])
     if not steps:
         return od.brief(body)
     first, last = steps[0], steps[-1]
-    t2m = [x['values']['t2m'] - 273.15 for x in steps if 't2m' in x['values']]
-    rain = sum(x['values'].get('tp', 0.0) for x in steps)
+    t2m = [x['t2m'] - 273.15 for x in steps if 't2m' in x]
+    rain = sum(x.get('tp', 0.0) for x in steps)
+    if not t2m:
+        # The node declares what each step carries, so say which variables did
+        # arrive rather than reporting an empty range as 0.0 .. 0.0.
+        return (f"{len(steps)} steps carrying {sorted(set(first) - {'valid_time', 'forecast_hour'})}, "
+                f"none of them t2m")
     lines = [
         f"{len(steps)} three-hour steps, {first['valid_time'][:16]} .. {last['valid_time'][:16]}",
         f"grid point {body['grid_point']} at {body['distance_km']} km; {body['files_read']} files read",
